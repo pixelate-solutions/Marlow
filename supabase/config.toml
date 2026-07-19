@@ -1,0 +1,33 @@
+project_id = "marlow"
+
+[api]
+enabled = true
+port = 55431
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 55432
+shadow_port = 55430
+major_version = 17
+
+[studio]
+enabled = true
+port = 55433
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+jwt_expiry = 3600
+enable_signup = true
+
+[local_smtp]
+enabled = true
+port = 55434
+
+[analytics]
+enabled = true
+port = 55437
+backend = "postgres"

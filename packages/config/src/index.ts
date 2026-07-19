@@ -1,0 +1,75 @@
+import { MODEL } from "@marlow/shared";
+import { z } from "zod";
+
+const booleanFromString = z
+  .enum(["true", "false"])
+  .default("false")
+  .transform((value) => value === "true");
+
+const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
+const optionalString = z.preprocess(emptyToUndefined, z.string().min(1).optional());
+const optionalUrl = z.preprocess(emptyToUndefined, z.url().optional());
+
+const baseSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  NEXT_PUBLIC_APP_URL: z.url().default("http://localhost:3000"),
+  NEXT_PUBLIC_SUPABASE_URL: optionalUrl,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: optionalString,
+  SUPABASE_SERVICE_ROLE_KEY: optionalString,
+  DATABASE_URL: optionalString,
+  MODEL_API_KEY: optionalString,
+  META_MODEL_API_BASE_URL: z.url().default(MODEL.baseUrl),
+  META_MODEL_ID: z.literal(MODEL.id).default(MODEL.id),
+  APOLLO_MCP_URL: z.url().default("https://mcp.apollo.io/mcp"),
+  APOLLO_OAUTH_CLIENT_ID: optionalString,
+  APOLLO_OAUTH_CLIENT_SECRET: optionalString,
+  APOLLO_OAUTH_REDIRECT_URI: optionalUrl,
+  ENCRYPTION_KEY: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
+  APPROVAL_SIGNING_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
+  WEB_SEARCH_PROVIDER: z.enum(["meta", "mock"]).default("meta"),
+  WEB_SEARCH_API_KEY: optionalString,
+  WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(3),
+  AGENT_MAX_TOOL_CALLS: z.coerce.number().int().min(1).max(100).default(40),
+  AGENT_MAX_RUN_MINUTES: z.coerce.number().int().min(1).max(120).default(20),
+  DEFAULT_DAILY_SEND_LIMIT: z.coerce.number().int().min(1).max(500).default(25),
+  DEFAULT_APOLLO_CREDIT_BUDGET: z.coerce.number().int().min(0).default(100),
+  MOCK_INTEGRATIONS: booleanFromString,
+  DEMO_MODE: booleanFromString,
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+});
+
+export type AppEnvironment = z.infer<typeof baseSchema>;
+
+const productionRequired = [
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "DATABASE_URL",
+  "MODEL_API_KEY",
+  "APOLLO_OAUTH_CLIENT_ID",
+  "APOLLO_OAUTH_CLIENT_SECRET",
+  "APOLLO_OAUTH_REDIRECT_URI",
+  "ENCRYPTION_KEY",
+  "APPROVAL_SIGNING_SECRET",
+] as const;
+
+export function parseEnvironment(
+  input: Record<string, string | undefined> = process.env,
+  options: { requireProductionSecrets?: boolean } = {},
+): AppEnvironment {
+  const parsed = baseSchema.parse(input);
+  if (
+    options.requireProductionSecrets &&
+    parsed.NODE_ENV === "production" &&
+    !parsed.MOCK_INTEGRATIONS
+  ) {
+    const missing = productionRequired.filter((key) => !parsed[key]);
+    if (missing.length > 0) {
+      throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
+    }
+  }
+  if (parsed.NODE_ENV === "production" && (parsed.MOCK_INTEGRATIONS || parsed.DEMO_MODE)) {
+    throw new Error("MOCK_INTEGRATIONS and DEMO_MODE may not be enabled in production.");
+  }
+  return parsed;
+}

@@ -1,0 +1,66 @@
+# Deployment
+
+The production topology has three independently managed planes:
+
+- Vercel: `apps/web`, authenticated APIs, and resumable event streams.
+- Railway: one continuously running `apps/agent-worker` service.
+- Supabase: Auth and PostgreSQL/RLS.
+
+Never run long campaign workflows inside a Vercel request.
+
+## Supabase
+
+1. Create a hosted project and set the production Site URL and `/auth/callback` redirect.
+2. Apply all ordered files in `supabase/migrations/` with `supabase db push --linked`. The third migration grants least-privilege API access while keeping credential, job, approval, send, and rate-limit tables server-only.
+3. Verify every tenant table reports RLS enabled and test two real users in different organizations.
+4. Do not apply `supabase/seed.sql` to production. It is deterministic review data only.
+5. Copy the project URL, anon key, service-role key, and connection string into the web and worker secret stores as appropriate.
+
+## Vercel web
+
+Import the repository as a monorepo using the repository root. `vercel.json` installs the frozen pnpm lockfile and builds the `@marlow/web` dependency graph. Set all public Supabase variables plus server-only database, model, Apollo OAuth, encryption, approval, search, and guardrail variables. Set `NEXT_PUBLIC_APP_URL` to the canonical HTTPS origin and register the same origin with Supabase and Apollo.
+
+Run a staging build before production:
+
+```bash
+pnpm turbo build --filter=@marlow/web
+```
+
+## Railway worker
+
+The worker imports shared workspace packages, so keep the repository root as the build context; do not set `source.rootDirectory` to `apps/agent-worker`. Configure the shared-monorepo commands:
+
+```bash
+railway environment edit --service-config marlow-worker build.buildCommand "pnpm install --frozen-lockfile && pnpm --filter @marlow/agent-worker... build"
+railway environment edit --service-config marlow-worker deploy.startCommand "pnpm --filter @marlow/agent-worker start"
+railway environment edit --service-config marlow-worker deploy.restartPolicyType ALWAYS
+railway environment edit --service-config marlow-worker build.watchPatterns '["apps/agent-worker/**","packages/agent/**","packages/apollo/**","packages/research/**","packages/database/**","packages/shared/**","packages/config/**","pnpm-lock.yaml"]'
+```
+
+Set worker secrets with Railway variables. Use stdin for sensitive values rather than including them in shell history. The worker needs the service-role key, database URL, model key, Apollo configuration, encryption/approval keys, search configuration, concurrency and guardrail values. It does not need `NEXT_PUBLIC_SUPABASE_ANON_KEY` for browser access, but the shared validator expects the public project URL.
+
+Deploy from the repository root with an auditable release message:
+
+```bash
+railway up --service marlow-worker --environment production --detach -m "Deploy durable Marlow agent worker"
+railway deployment list --service marlow-worker --environment production --json
+```
+
+A detached upload only means the build is queued. Keep polling the newest deployment and report success only after its terminal status is `SUCCESS`; use bounded build/runtime logs for `FAILED` or `CRASHED` states. Configure at least one replica and do not enable application sleeping. The PostgreSQL job claim uses `SKIP LOCKED`, so multiple replicas can share work safely within `WORKER_CONCURRENCY` limits.
+
+## Staging campaign checklist
+
+1. Confirm production validation rejects missing secrets and mock adapters.
+2. Sign in as a staging user and verify organization creation/RLS.
+3. Connect a sandbox Apollo account and list mailboxes.
+4. Use a low credit budget, one prospect, and a daily send cap of one.
+5. Complete discovery and verify the structured profile, sources, score, and draft.
+6. Edit the draft and confirm any earlier approval is invalid.
+7. Suppress the recipient and confirm send is blocked; revoke the suppression only for the controlled test.
+8. Approve once and confirm Apollo message ID, exact audit content, and a single send row.
+9. Pause/disconnect Apollo and confirm affected campaigns stop.
+10. Revoke Apollo from Integrations and confirm encrypted credentials are removed.
+
+## Health and rollback
+
+Monitor worker heartbeats, queued/failed jobs, model/MCP error rates, credit usage, pending approvals, ambiguous deliveries, and search-to-draft time. Web rollback uses the previous Vercel deployment. Worker rollback uses the previous Railway deployment; schema changes are forward-only unless a reviewed compensating migration is prepared.

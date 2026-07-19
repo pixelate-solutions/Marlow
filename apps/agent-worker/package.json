@@ -1,0 +1,32 @@
+{
+  "name": "@marlow/agent-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsup --config tsup.config.ts",
+    "lint": "eslint src --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --passWithNoTests --coverage"
+  },
+  "dependencies": {
+    "@marlow/agent": "workspace:*",
+    "@marlow/apollo": "workspace:*",
+    "@marlow/config": "workspace:*",
+    "@marlow/database": "workspace:*",
+    "@marlow/research": "workspace:*",
+    "@marlow/shared": "workspace:*",
+    "@supabase/supabase-js": "2.110.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "eslint": "9.39.5",
+    "tsx": "4.23.1",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}
