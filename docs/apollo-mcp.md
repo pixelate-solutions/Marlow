@@ -2,6 +2,8 @@
 
 Marlow integrates only through Apollo’s official remote MCP endpoint (`https://mcp.apollo.io/mcp`). It does not automate Apollo’s web interface.
 
+Apollo API keys and Apollo MCP use different authentication systems. `APOLLO_API_KEY` authenticates Apollo REST requests through the `x-api-key` header; it cannot authenticate the remote MCP endpoint and Marlow never substitutes REST calls for MCP operations. Production MCP access therefore still requires Apollo OAuth client configuration and a user authorization grant.
+
 ## OAuth lifecycle
 
 1. `POST /api/integrations/apollo/connect` validates an owner/admin session and same-origin request.

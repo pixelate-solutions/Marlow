@@ -14,13 +14,17 @@ const baseSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   NEXT_PUBLIC_APP_URL: z.url().default("http://localhost:3000"),
   NEXT_PUBLIC_SUPABASE_URL: optionalUrl,
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: optionalString,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: optionalString,
+  SUPABASE_SECRET_KEY: optionalString,
   SUPABASE_SERVICE_ROLE_KEY: optionalString,
+  SUPABASE_JWKS_URL: optionalUrl,
   DATABASE_URL: optionalString,
   MODEL_API_KEY: optionalString,
   META_MODEL_API_BASE_URL: z.url().default(MODEL.baseUrl),
   META_MODEL_ID: z.literal(MODEL.id).default(MODEL.id),
   APOLLO_MCP_URL: z.url().default("https://mcp.apollo.io/mcp"),
+  APOLLO_API_KEY: optionalString,
   APOLLO_OAUTH_CLIENT_ID: optionalString,
   APOLLO_OAUTH_CLIENT_SECRET: optionalString,
   APOLLO_OAUTH_REDIRECT_URI: optionalUrl,
@@ -40,22 +44,45 @@ const baseSchema = z.object({
 
 export type AppEnvironment = z.infer<typeof baseSchema>;
 
-const productionRequired = [
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
-  "DATABASE_URL",
-  "MODEL_API_KEY",
-  "APOLLO_OAUTH_CLIENT_ID",
-  "APOLLO_OAUTH_CLIENT_SECRET",
-  "APOLLO_OAUTH_REDIRECT_URI",
-  "ENCRYPTION_KEY",
-  "APPROVAL_SIGNING_SECRET",
-] as const;
+export type AppRuntime = "web" | "worker" | "all";
+
+export function getSupabasePublishableKey(
+  environment: Pick<
+    AppEnvironment,
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" | "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  >,
+): string | undefined {
+  return (
+    environment.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? environment.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+}
+
+export function getSupabaseSecretKey(
+  environment: Pick<AppEnvironment, "SUPABASE_SECRET_KEY" | "SUPABASE_SERVICE_ROLE_KEY">,
+): string | undefined {
+  return environment.SUPABASE_SECRET_KEY ?? environment.SUPABASE_SERVICE_ROLE_KEY;
+}
+
+function missingProductionVariables(environment: AppEnvironment, runtime: AppRuntime): string[] {
+  const missing: string[] = [];
+  if (!environment.NEXT_PUBLIC_SUPABASE_URL) missing.push("NEXT_PUBLIC_SUPABASE_URL");
+  if (!getSupabaseSecretKey(environment)) {
+    missing.push("SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY)");
+  }
+  if (!environment.MODEL_API_KEY) missing.push("MODEL_API_KEY");
+  if (!environment.ENCRYPTION_KEY) missing.push("ENCRYPTION_KEY");
+  if ((runtime === "web" || runtime === "all") && !getSupabasePublishableKey(environment)) {
+    missing.push("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or legacy NEXT_PUBLIC_SUPABASE_ANON_KEY)");
+  }
+  if ((runtime === "web" || runtime === "all") && !environment.APPROVAL_SIGNING_SECRET) {
+    missing.push("APPROVAL_SIGNING_SECRET");
+  }
+  return missing;
+}
 
 export function parseEnvironment(
   input: Record<string, string | undefined> = process.env,
-  options: { requireProductionSecrets?: boolean } = {},
+  options: { requireProductionSecrets?: boolean; runtime?: AppRuntime } = {},
 ): AppEnvironment {
   const parsed = baseSchema.parse(input);
   if (
@@ -63,7 +90,7 @@ export function parseEnvironment(
     parsed.NODE_ENV === "production" &&
     !parsed.MOCK_INTEGRATIONS
   ) {
-    const missing = productionRequired.filter((key) => !parsed[key]);
+    const missing = missingProductionVariables(parsed, options.runtime ?? "all");
     if (missing.length > 0) {
       throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
     }

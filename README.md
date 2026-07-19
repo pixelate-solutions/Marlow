@@ -59,8 +59,8 @@ Demo data is labeled, uses `.example` domains, consumes no Apollo credits, and s
 ## Production integrations
 
 - **Model:** set `MODEL_API_KEY`; production is locked to `https://api.meta.ai/v1` and `muse-spark-1.1`. Errors are retried only when transient. There is no fallback model.
-- **Apollo:** register the callback in `APOLLO_OAUTH_REDIRECT_URI`, then set the Apollo OAuth client values. The app discovers OAuth metadata, uses PKCE and signed state, encrypts tokens with AES-256-GCM, and connects only to `https://mcp.apollo.io/mcp`.
-- **Supabase:** apply all migrations, verify RLS, configure Auth redirect URLs, and keep the service-role key server-only.
+- **Apollo:** register the callback in `APOLLO_OAUTH_REDIRECT_URI`, then set the Apollo OAuth client values. The app discovers OAuth metadata, uses PKCE and signed state, encrypts tokens with AES-256-GCM, and connects only to `https://mcp.apollo.io/mcp`. `APOLLO_API_KEY` is a REST credential and cannot replace MCP OAuth.
+- **Supabase:** apply all migrations, verify RLS, configure Auth redirect URLs, use the current publishable/secret keys, and keep `SUPABASE_SECRET_KEY` server-only. Legacy anon/service-role environment names remain supported during migration.
 - **Research:** production uses Meta search grounding plus safe public-page retrieval. Retrieved content remains untrusted model data.
 
 External setup details are in [Apollo MCP](docs/apollo-mcp.md), [deployment](docs/deployment.md), and [security](docs/security.md).

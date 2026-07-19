@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseEnvironment } from "./index";
+import { getSupabasePublishableKey, getSupabaseSecretKey, parseEnvironment } from "./index";
 
 describe("runtime environment", () => {
   it("treats blank optional development secrets as absent", () => {
@@ -22,5 +22,55 @@ describe("runtime environment", () => {
 
   it("hard-locks the production model id", () => {
     expect(() => parseEnvironment({ META_MODEL_ID: "another-model" })).toThrow();
+  });
+
+  it("prefers current Supabase keys while retaining legacy fallbacks", () => {
+    const current = parseEnvironment({
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_current",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "legacy-anon",
+      SUPABASE_SECRET_KEY: "sb_secret_current",
+      SUPABASE_SERVICE_ROLE_KEY: "legacy-service-role",
+    });
+    expect(getSupabasePublishableKey(current)).toBe("sb_publishable_current");
+    expect(getSupabaseSecretKey(current)).toBe("sb_secret_current");
+
+    const legacy = parseEnvironment({
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "legacy-anon",
+      SUPABASE_SERVICE_ROLE_KEY: "legacy-service-role",
+    });
+    expect(getSupabasePublishableKey(legacy)).toBe("legacy-anon");
+    expect(getSupabaseSecretKey(legacy)).toBe("legacy-service-role");
+  });
+
+  it("validates the web runtime with current Supabase key names", () => {
+    expect(() =>
+      parseEnvironment(
+        {
+          NODE_ENV: "production",
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+          SUPABASE_SECRET_KEY: "sb_secret_test",
+          MODEL_API_KEY: "model-key",
+          ENCRYPTION_KEY: "e".repeat(32),
+          APPROVAL_SIGNING_SECRET: "a".repeat(32),
+        },
+        { requireProductionSecrets: true, runtime: "web" },
+      ),
+    ).not.toThrow();
+  });
+
+  it("does not require browser or OAuth configuration for the worker runtime", () => {
+    expect(() =>
+      parseEnvironment(
+        {
+          NODE_ENV: "production",
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+          SUPABASE_SECRET_KEY: "sb_secret_test",
+          MODEL_API_KEY: "model-key",
+          ENCRYPTION_KEY: "e".repeat(32),
+        },
+        { requireProductionSecrets: true, runtime: "worker" },
+      ),
+    ).not.toThrow();
   });
 });

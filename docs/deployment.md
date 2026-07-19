@@ -14,11 +14,12 @@ Never run long campaign workflows inside a Vercel request.
 2. Apply all ordered files in `supabase/migrations/` with `supabase db push --linked`. The third migration grants least-privilege API access while keeping credential, job, approval, send, and rate-limit tables server-only.
 3. Verify every tenant table reports RLS enabled and test two real users in different organizations.
 4. Do not apply `supabase/seed.sql` to production. It is deterministic review data only.
-5. Copy the project URL, anon key, service-role key, and connection string into the web and worker secret stores as appropriate.
+5. Copy the project URL, publishable key, and secret key into the web and worker secret stores as appropriate. Marlow still accepts the legacy anon/service-role names during migration, but new deployments should use `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SECRET_KEY`.
+6. `SUPABASE_JWKS_URL` is optional because the Supabase SDK validates Marlow sessions through the Auth service. Keep it available only for a future service that verifies JWTs directly.
 
 ## Vercel web
 
-Import the repository as a monorepo using the repository root. `vercel.json` installs the frozen pnpm lockfile and builds the `@marlow/web` dependency graph. Set all public Supabase variables plus server-only database, model, Apollo OAuth, encryption, approval, search, and guardrail variables. Set `NEXT_PUBLIC_APP_URL` to the canonical HTTPS origin and register the same origin with Supabase and Apollo.
+Import the repository as a monorepo using the repository root. `vercel.json` installs the frozen pnpm lockfile and builds the `@marlow/web` dependency graph. Set the Supabase URL, publishable key, secret key, model key, encryption key, approval signing secret, and relevant search/guardrail variables. Set `NEXT_PUBLIC_APP_URL` to the canonical HTTPS origin and register the same origin with Supabase and Apollo. Apollo OAuth client values are feature-level configuration: the site can start without them, but users cannot connect Apollo MCP until they are present.
 
 Run a staging build before production:
 
@@ -37,7 +38,7 @@ railway environment edit --service-config marlow-worker deploy.restartPolicyType
 railway environment edit --service-config marlow-worker build.watchPatterns '["apps/agent-worker/**","packages/agent/**","packages/apollo/**","packages/research/**","packages/database/**","packages/shared/**","packages/config/**","pnpm-lock.yaml"]'
 ```
 
-Set worker secrets with Railway variables. Use stdin for sensitive values rather than including them in shell history. The worker needs the service-role key, database URL, model key, Apollo configuration, encryption/approval keys, search configuration, concurrency and guardrail values. It does not need `NEXT_PUBLIC_SUPABASE_ANON_KEY` for browser access, but the shared validator expects the public project URL.
+Set worker secrets with Railway variables. Use stdin for sensitive values rather than including them in shell history. The worker needs the Supabase secret key, project URL, model key, encryption key, Apollo MCP configuration, search configuration, concurrency and guardrail values. It does not need the browser publishable key. A direct database URL is needed for database CLI workflows, not for the current worker runtime.
 
 Deploy from the repository root with an auditable release message:
 

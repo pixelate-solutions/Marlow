@@ -7,7 +7,7 @@ import {
   createDefaultToolRegistry,
 } from "@marlow/agent";
 import { ApolloMcpProvider, MockApolloProvider, type ApolloProvider } from "@marlow/apollo";
-import { parseEnvironment } from "@marlow/config";
+import { getSupabaseSecretKey, parseEnvironment } from "@marlow/config";
 import {
   SupabaseAgentRepository,
   claimAgentJobs,
@@ -20,15 +20,17 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { log } from "./logger";
 import { processSendJob } from "./send";
 
-const environment = parseEnvironment(process.env, { requireProductionSecrets: true });
-if (!environment.NEXT_PUBLIC_SUPABASE_URL || !environment.SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error("Worker requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+const environment = parseEnvironment(process.env, {
+  requireProductionSecrets: true,
+  runtime: "worker",
+});
+const supabaseSecretKey = getSupabaseSecretKey(environment);
+if (!environment.NEXT_PUBLIC_SUPABASE_URL || !supabaseSecretKey) {
+  throw new Error("Worker requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY.");
 }
-const client = createClient(
-  environment.NEXT_PUBLIC_SUPABASE_URL,
-  environment.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { persistSession: false, autoRefreshToken: false } },
-);
+const client = createClient(environment.NEXT_PUBLIC_SUPABASE_URL, supabaseSecretKey, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
 const repository = new SupabaseAgentRepository(client);
 const workerId = `worker-${randomUUID()}`;
 const systemPrompt = await readFile(
