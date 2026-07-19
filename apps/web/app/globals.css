@@ -810,9 +810,10 @@ select:focus-visible {
   background: rgb(255 255 255 / 5%);
 }
 .nav-link--active {
+  padding-left: 8px;
+  border-left: 3px solid var(--accent);
   color: #fff;
   background: var(--nav-soft);
-  box-shadow: inset 3px 0 var(--accent);
 }
 .nav-count {
   margin-left: auto;
@@ -828,11 +829,12 @@ select:focus-visible {
   margin-top: auto;
 }
 .credits-mini {
+  display: block;
   margin: 0 3px 14px;
   padding: 13px;
-  border: 1px solid rgb(255 255 255 / 7%);
+  border: 1px solid #294740;
   border-radius: 11px;
-  background: rgb(255 255 255 / 4%);
+  background: var(--nav-soft);
 }
 .credits-mini__top {
   display: flex;

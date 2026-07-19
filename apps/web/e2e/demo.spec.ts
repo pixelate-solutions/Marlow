@@ -24,9 +24,13 @@ test.describe("deterministic collaborative campaign", () => {
     await expect(page.getByText("Awaiting approval", { exact: true })).toBeVisible();
     if ((page.viewportSize()?.width ?? 1_000) < 680) {
       await page.getByRole("button", { name: "Open navigation" }).click();
-      await expect(
-        page.getByRole("dialog", { name: "Navigation" }).getByRole("link", { name: "Suppression" }),
-      ).toBeVisible();
+      const mobileDrawer = page.getByRole("dialog", { name: "Navigation" });
+      await expect(mobileDrawer.getByRole("link", { name: "Suppression" })).toBeVisible();
+      await expect(mobileDrawer.locator(".credits-mini")).toHaveCSS("display", "block");
+      await expect(mobileDrawer.locator(".credits-mini")).toHaveCSS(
+        "background-color",
+        "rgb(26, 57, 51)",
+      );
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog", { name: "Navigation" })).toBeHidden();
     }
@@ -62,6 +66,17 @@ test.describe("deterministic collaborative campaign", () => {
     await page.goto("/review");
     await expect(page).toHaveURL(/\/review\/70000000-0000-4000-8000-000000000001$/);
     await expect(page.getByRole("heading", { name: "Review queue" })).toBeVisible();
+    if ((page.viewportSize()?.width ?? 1_000) >= 900) {
+      const desktopSidebar = page.locator(".sidebar");
+      const activeReviewLink = desktopSidebar.locator('.nav-link--active[href="/review"]');
+      await expect(activeReviewLink).toHaveCSS("background-color", "rgb(26, 57, 51)");
+      await expect(activeReviewLink).toHaveCSS("border-left-color", "rgb(36, 184, 138)");
+      await expect(desktopSidebar.locator(".credits-mini")).toHaveCSS("display", "block");
+      await expect(desktopSidebar.locator(".credits-mini")).toHaveCSS(
+        "background-color",
+        "rgb(26, 57, 51)",
+      );
+    }
     await expect(page.getByText("Supporting sources")).toBeVisible();
     const body = page.getByLabel("Email body");
     await body.fill(`${await body.inputValue()}\n\nOpen to comparing notes next Tuesday?`);
