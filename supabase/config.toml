@@ -31,3 +31,29 @@ port = 55434
 enabled = true
 port = 55437
 backend = "postgres"
+
+[remotes.production]
+project_id = "dpxyynqpkzbzbdrarobk"
+
+[remotes.production.auth]
+site_url = "https://marlow-ashy.vercel.app"
+additional_redirect_urls = [
+  "http://localhost:3000/auth/callback",
+  "http://localhost:3000/auth/callback?next=/onboarding",
+  "http://localhost:3000/auth/callback?next=%2Freset-password",
+  "https://marlow-ashy.vercel.app/auth/callback",
+  "https://marlow-ashy.vercel.app/auth/callback?next=/onboarding",
+  "https://marlow-ashy.vercel.app/auth/callback?next=%2Freset-password",
+]
+
+[remotes.production.auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[remotes.production.auth.email]
+enable_confirmations = true
+max_frequency = "1m"
+otp_length = 8
+
+[remotes.production.storage.vector]
+enabled = false

@@ -1,33 +1,35 @@
 begin;
 
+set local role postgres;
+set local search_path = public, extensions;
 create extension if not exists pgtap with schema extensions;
-select plan(11);
+select extensions.plan(11);
 
-select is(
+select extensions.is(
   (select count(*)::integer from information_schema.tables where table_schema = 'public'),
   29,
   'all normalized public tables exist'
 );
 
-select is(
+select extensions.is(
   (select count(*)::integer from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relrowsecurity),
   29,
   'RLS is enabled on every public table'
 );
 
-select ok(public.marlow_signup_ready(), 'signup readiness reports the workspace trigger is installed');
+select extensions.ok(public.marlow_signup_ready(), 'signup readiness reports the workspace trigger is installed');
 
-select ok(
+select extensions.ok(
   not has_function_privilege('anon', 'public.marlow_signup_ready()', 'EXECUTE'),
   'anonymous browser clients cannot invoke the signup readiness marker'
 );
 
-select ok(
+select extensions.ok(
   not has_function_privilege('authenticated', 'public.marlow_signup_ready()', 'EXECUTE'),
   'authenticated browser clients cannot invoke the signup readiness marker'
 );
 
-select ok(
+select extensions.ok(
   has_function_privilege('service_role', 'public.marlow_signup_ready()', 'EXECUTE'),
   'server-side Supabase clients can invoke the signup readiness marker'
 );
@@ -37,7 +39,7 @@ values
   ('81000000-0000-4000-8000-000000000001', 'tenant-a@example.test'),
   ('81000000-0000-4000-8000-000000000002', 'tenant-b@example.test');
 
-select is(
+select extensions.is(
   (
     select count(distinct user_id)::integer
     from public.organization_members
@@ -75,26 +77,26 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '81000000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
 
-select is(
+select extensions.is(
   (select count(*)::integer from public.campaigns where id in ('83000000-0000-4000-8000-000000000001', '83000000-0000-4000-8000-000000000002')),
   1,
   'a member sees only their organization campaign'
 );
 
-select ok(
+select extensions.ok(
   exists(select 1 from public.campaigns where id = '83000000-0000-4000-8000-000000000001'),
   'a member can read their organization campaign'
 );
 
-select ok(
+select extensions.ok(
   not exists(select 1 from public.campaigns where id = '83000000-0000-4000-8000-000000000002'),
   'a member cannot read another organization campaign'
 );
 
-select ok(
+select extensions.ok(
   not has_table_privilege(current_user, 'public.integration_credentials', 'SELECT'),
   'browser roles have no privilege to read encrypted integration credentials'
 );
 
-select * from finish();
+select * from extensions.finish();
 rollback;
