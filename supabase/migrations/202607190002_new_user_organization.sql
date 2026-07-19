@@ -24,4 +24,23 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
 
+create or replace function public.marlow_signup_ready()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select to_regclass('public.organizations') is not null
+    and exists (
+      select 1
+      from pg_catalog.pg_trigger
+      where tgname = 'on_auth_user_created'
+        and not tgisinternal
+    );
+$$;
+
+revoke all on function public.marlow_signup_ready() from public, anon, authenticated;
+grant execute on function public.marlow_signup_ready() to service_role;
+
 commit;

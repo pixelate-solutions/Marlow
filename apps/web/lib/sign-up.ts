@@ -31,6 +31,9 @@ export function parseSignUpForm(form: FormData): SignUpInput {
 }
 
 export function signUpErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message === "MARLOW_SIGNUP_NOT_READY") {
+    return "Marlow is finishing workspace setup. Please try creating your account again shortly.";
+  }
   if (error instanceof z.ZodError) {
     return error.issues[0]?.message ?? "Check your account details and try again.";
   }

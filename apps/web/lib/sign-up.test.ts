@@ -33,4 +33,10 @@ describe("account registration", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("returns a safe message while the workspace schema is unavailable", () => {
+    expect(signUpErrorMessage(new Error("MARLOW_SIGNUP_NOT_READY"))).toMatch(
+      /finishing workspace setup/i,
+    );
+  });
 });

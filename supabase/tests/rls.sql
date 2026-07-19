@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(6);
+select plan(11);
 
 select is(
   (select count(*)::integer from information_schema.tables where table_schema = 'public'),
@@ -15,10 +15,40 @@ select is(
   'RLS is enabled on every public table'
 );
 
+select ok(public.marlow_signup_ready(), 'signup readiness reports the workspace trigger is installed');
+
+select ok(
+  not has_function_privilege('anon', 'public.marlow_signup_ready()', 'EXECUTE'),
+  'anonymous browser clients cannot invoke the signup readiness marker'
+);
+
+select ok(
+  not has_function_privilege('authenticated', 'public.marlow_signup_ready()', 'EXECUTE'),
+  'authenticated browser clients cannot invoke the signup readiness marker'
+);
+
+select ok(
+  has_function_privilege('service_role', 'public.marlow_signup_ready()', 'EXECUTE'),
+  'server-side Supabase clients can invoke the signup readiness marker'
+);
+
 insert into auth.users(id, email)
 values
   ('81000000-0000-4000-8000-000000000001', 'tenant-a@example.test'),
   ('81000000-0000-4000-8000-000000000002', 'tenant-b@example.test');
+
+select is(
+  (
+    select count(distinct user_id)::integer
+    from public.organization_members
+    where user_id in (
+      '81000000-0000-4000-8000-000000000001',
+      '81000000-0000-4000-8000-000000000002'
+    )
+  ),
+  2,
+  'new auth users receive an organization membership automatically'
+);
 
 insert into public.organizations(id, name, slug)
 values
