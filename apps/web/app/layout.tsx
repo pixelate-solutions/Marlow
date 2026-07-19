@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Marlow — Your AI outbound teammate", template: "%s · Marlow" },
+  title: { default: "Marlow | Your AI outbound teammate", template: "%s · Marlow" },
   description: "AI-powered lead generation and grounded, human-approved cold outreach.",
   applicationName: "Marlow",
 };

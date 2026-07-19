@@ -118,7 +118,7 @@ function createMockModel(): MockModelProvider {
     },
     outreach_draft: {
       subject: "Scaling operations",
-      body: "Maya — I saw Acme is expanding its operations team. Northstar helps growing teams keep reporting consistent without replacing the tools they already use. Would comparing notes for 15 minutes next week be useful?",
+      body: "Maya, I saw Acme is expanding its operations team. Northstar helps growing teams keep reporting consistent without replacing the tools they already use. Would comparing notes for 15 minutes next week be useful?",
       personalizationSummary: "Uses a verified hiring signal.",
       selectedAngle: "Operational consistency during growth.",
       qualificationSummary: "Strong account and persona fit.",

@@ -8,7 +8,7 @@ import {
   type SearchPlan,
 } from "@marlow/shared";
 import { z } from "zod";
-import { validateEmailCompliance } from "./compliance";
+import { explicitlyRequestsEmDashes, validateEmailCompliance } from "./compliance";
 import type { ModelProvider } from "./model";
 import { calculateLeadScore } from "./scoring";
 import type { ToolPolicyRegistry } from "./policy";
@@ -455,6 +455,7 @@ export class CampaignOrchestrator {
       subject: candidate.subject,
       body: candidate.body,
       profile: campaign.profile,
+      allowEmDashes: explicitlyRequestsEmDashes(campaign.profile.messaging.customInstructions),
     });
     if (!deterministicReview.valid) return undefined;
     const review = await this.dependencies.model.generateStructured({
@@ -474,6 +475,7 @@ export class CampaignOrchestrator {
       subject: review.value.revisedDraft.subject,
       body: review.value.revisedDraft.body,
       profile: campaign.profile,
+      allowEmDashes: explicitlyRequestsEmDashes(campaign.profile.messaging.customInstructions),
     });
     return revisedCompliance.valid ? review.value.revisedDraft : undefined;
   }

@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       {
         ...campaign,
         assistantMessage:
-          "Thanks—that’s a useful starting point. Which roles feel the problem most directly, and who normally owns the buying decision?",
+          "Thanks, that’s a useful starting point. Which roles feel the problem most directly, and who normally owns the buying decision?",
         readinessScore: 24,
       },
       { status: 201 },

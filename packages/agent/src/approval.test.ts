@@ -22,7 +22,7 @@ class MemoryRepository implements ApprovalRepository {
     recipientEmail: "maya@acme.example",
     sendingMailboxId: "mailbox",
     subject: "Scaling operations",
-    body: "Maya — your operations hiring suggests the team is growing. Northstar helps growing teams keep reporting consistent without replacing current tools. Would a short comparison next week be useful?",
+    body: "Maya, your operations hiring suggests the team is growing. Northstar helps growing teams keep reporting consistent without replacing current tools. Would a short comparison next week be useful?",
     campaignPaused: false,
     suppressed: false,
     dailyLimitReached: false,

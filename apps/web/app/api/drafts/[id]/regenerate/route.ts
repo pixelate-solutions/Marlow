@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { MuseSparkProvider, validateEmailCompliance } from "@marlow/agent";
+import {
+  explicitlyRequestsEmDashes,
+  MuseSparkProvider,
+  validateEmailCompliance,
+} from "@marlow/agent";
 import { AppError, outreachDraftSchema } from "@marlow/shared";
 import { z } from "zod";
 import { apiError, apiOk } from "@/lib/api";
@@ -110,6 +114,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       subject: finalDraft.subject,
       body: finalDraft.body,
       profile: profileContainer?.profile,
+      allowEmDashes: explicitlyRequestsEmDashes(
+        instruction,
+        profileContainer?.profile?.messaging?.customInstructions,
+      ),
     });
     if (!compliance.valid)
       throw new AppError(

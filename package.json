@@ -7,14 +7,15 @@
   },
   "scripts": {
     "dev": "turbo dev",
-    "build": "turbo build",
-    "lint": "turbo lint",
+    "build": "pnpm check:copy && turbo build",
+    "lint": "pnpm check:copy && turbo lint",
     "typecheck": "turbo typecheck",
-    "test": "turbo test",
+    "test": "pnpm check:copy && turbo test",
     "test:coverage": "turbo test:coverage",
     "test:e2e": "pnpm --filter @marlow/web test:e2e",
     "format": "prettier --check .",
-    "format:fix": "prettier --write ."
+    "format:fix": "prettier --write .",
+    "check:copy": "node check-copy-style.mjs"
   },
   "devDependencies": {
     "@types/node": "26.1.1",

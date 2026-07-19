@@ -19,7 +19,7 @@ export default async function SignInPage({
         <div className="auth-story__copy">
           <h1>Your next best prospect is already out there.</h1>
           <p>
-            Marlow finds the signal, checks the fit, and writes the first thoughtful note—while you
+            Marlow finds the signal, checks the fit, and writes the first thoughtful note while you
             stay in control of every send.
           </p>
         </div>
@@ -28,7 +28,7 @@ export default async function SignInPage({
             “It feels less like operating another sales tool and more like handing research to a
             teammate I trust.”
           </p>
-          <span>— Demo customer, operations software</span>
+          <span>Demo customer · Operations software</span>
         </blockquote>
       </section>
       <section className="auth-form-wrap">

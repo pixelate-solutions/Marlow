@@ -19,7 +19,7 @@ export default async function SignUpPage({
         <div className="auth-story__copy">
           <h1>Turn a clear market idea into thoughtful outreach.</h1>
           <p>
-            Create your workspace, connect Apollo, and let Marlow research the right prospects—one
+            Create your workspace, connect Apollo, and let Marlow research the right prospects, one
             human-approved message at a time.
           </p>
         </div>

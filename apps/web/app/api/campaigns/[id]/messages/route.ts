@@ -12,7 +12,7 @@ function demoTurn(content: string) {
   if (/vp|director|operations|coo|owner/.test(lower))
     return {
       assistantMessage:
-        "Good—those roles give me a clear persona. What company sizes and geographies should I prioritize or exclude?",
+        "Good, those roles give me a clear persona. What company sizes and geographies should I prioritize or exclude?",
       readinessScore: 54,
     };
   if (/employee|revenue|united states|midwest|detroit|chicago/.test(lower))

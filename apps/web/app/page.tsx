@@ -35,7 +35,7 @@ export default function HomePage() {
           </h1>
           <p className="marketing__lead">
             Describe your market once. Marlow finds the right people, researches every account, and
-            prepares thoughtful emails you can trust—then waits for your approval.
+            prepares thoughtful emails you can trust, then waits for your approval.
           </p>
           <div className="marketing__actions">
             <Link className="button button--primary button--lg" href="/sign-up">
@@ -94,7 +94,7 @@ export default function HomePage() {
                   <span className="badge badge--success">92 match</span>
                 </div>
                 <p>
-                  Maya — I saw Acme is expanding the operations team as its Midwest footprint grows.
+                  Maya, I saw Acme is expanding the operations team as its Midwest footprint grows.
                   That often makes consistent handoffs harder across facilities…
                 </p>
                 <div className="hero-draft__footer">
