@@ -145,13 +145,22 @@ export function CampaignChat() {
         <h2>Campaign profile</h2>
         <p>Built from your answers and public website research.</p>
         <div className="readiness-ring">
-          <span
+          <div
             className="ring"
+            role="progressbar"
+            aria-label="Campaign readiness"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress}
             style={{
               background: `conic-gradient(var(--accent) 0 ${progress}%, #dfe7e3 ${progress}%)`,
             }}
-          />
-          <div>
+          >
+            <span className="ring__value" aria-hidden="true">
+              {progress}%
+            </span>
+          </div>
+          <div className="readiness-copy">
             <strong>{progress}% ready</strong>
             <span>More detail needed before search</span>
           </div>

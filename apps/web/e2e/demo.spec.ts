@@ -39,11 +39,25 @@ test.describe("deterministic collaborative campaign", () => {
     await expect(
       page.getByText("Tell me about your company, what you sell, and who you’re trying to reach."),
     ).toBeVisible();
+    const readinessIndicator = page.locator(
+      '[role="progressbar"][aria-label="Campaign readiness"]',
+    );
+    const readinessLabel = page.locator(".readiness-copy strong");
+    await expect(readinessIndicator).toHaveAttribute("aria-valuenow", "18");
+    await expect(readinessIndicator).toContainText("18%");
+    await expect(readinessLabel).toHaveText("18% ready");
+    if ((page.viewportSize()?.width ?? 1_000) >= 680) {
+      await expect(readinessIndicator).toBeVisible();
+      await expect(readinessLabel).toBeVisible();
+    }
     await page
       .getByLabel("Answer Marlow")
       .fill("Northstar sells workflow analytics to operations leaders at Midwest manufacturers.");
     await page.getByRole("button", { name: "Send answer" }).click();
     await expect(page.getByText(/which roles feel the pain/i)).toBeVisible();
+    await expect(readinessIndicator).toHaveAttribute("aria-valuenow", "36");
+    await expect(readinessIndicator).toContainText("36%");
+    await expect(readinessLabel).toHaveText("36% ready");
 
     await page.goto("/review");
     await expect(page).toHaveURL(/\/review\/70000000-0000-4000-8000-000000000001$/);
