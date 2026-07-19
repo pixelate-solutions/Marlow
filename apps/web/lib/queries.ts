@@ -15,7 +15,9 @@ export async function getCampaigns() {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("campaigns")
-    .select("id,name,objective,status,updated_at,prospects(status),outreach_drafts(status)")
+    .select(
+      "id,name,objective,status,updated_at,prospects(status),outreach_drafts(id,status,draft_kind,created_at)",
+    )
     .eq("organization_id", auth.organizationId)
     .is("deleted_at", null)
     .order("updated_at", { ascending: false });
@@ -40,25 +42,37 @@ export async function getCampaigns() {
     PAUSED: 50,
     FAILED: 50,
   };
-  return (data ?? []).map((campaign, index) => {
-    const prospects = campaign.prospects ?? [];
-    const drafts = campaign.outreach_drafts ?? [];
-    return {
-      id: campaign.id,
-      name: campaign.name,
-      objective: campaign.objective,
-      status: campaign.status,
-      progress: stageProgress[campaign.status] ?? 0,
-      prospects: prospects.length,
-      qualified: prospects.filter((prospect) =>
-        ["QUALIFIED", "RESEARCHED", "DRAFTED", "SENT"].includes(prospect.status),
-      ).length,
-      drafts: drafts.length,
-      sent: drafts.filter((draft) => draft.status === "SENT").length,
-      updated: new Date(campaign.updated_at).toLocaleDateString(),
-      color: (["teal", "blue", "amber"] as const)[index % 3] ?? "teal",
-    };
-  });
+  return (data ?? [])
+    .map((campaign, index) => {
+      const prospects = campaign.prospects ?? [];
+      const drafts = campaign.outreach_drafts ?? [];
+      const pendingFollowUps = drafts
+        .filter(
+          (draft) => draft.draft_kind === "FOLLOW_UP" && draft.status === "PENDING_USER_APPROVAL",
+        )
+        .sort(
+          (left, right) =>
+            new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
+        );
+      return {
+        id: campaign.id,
+        name: campaign.name,
+        objective: campaign.objective,
+        status: campaign.status,
+        progress: stageProgress[campaign.status] ?? 0,
+        prospects: prospects.length,
+        qualified: prospects.filter((prospect) =>
+          ["QUALIFIED", "RESEARCHED", "DRAFTED", "SENT"].includes(prospect.status),
+        ).length,
+        drafts: drafts.length,
+        sent: drafts.filter((draft) => draft.status === "SENT").length,
+        updated: new Date(campaign.updated_at).toLocaleDateString(),
+        color: (["teal", "blue", "amber"] as const)[index % 3] ?? "teal",
+        followUpNeeded: pendingFollowUps.length,
+        followUpDraftId: pendingFollowUps[0]?.id ?? null,
+      };
+    })
+    .sort((left, right) => Number(right.followUpNeeded > 0) - Number(left.followUpNeeded > 0));
 }
 
 export async function getCampaign(id: string) {
@@ -125,51 +139,61 @@ export async function getDrafts() {
   const { data } = await supabase
     .from("outreach_drafts")
     .select(
-      "id,prospect_id,recipient_email,sending_mailbox_id,sending_provider,sender_email,sender_name,signature_text,compliance_footer_text,subject,body,confidence,prospects(first_name,last_name,title,location,email_status,companies(name)),campaigns(name)",
+      "id,campaign_id,prospect_id,recipient_email,sending_mailbox_id,sending_provider,sender_email,sender_name,signature_text,compliance_footer_text,subject,body,confidence,draft_kind,parent_email_send_id,follow_up_number,prospects(first_name,last_name,title,location,email_status,companies(name)),campaigns(name)",
     )
     .eq("organization_id", auth.organizationId)
     .eq("status", "PENDING_USER_APPROVAL")
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
-  return (data ?? []).map((row) => {
-    const prospect = Array.isArray(row.prospects) ? row.prospects[0] : row.prospects;
-    const company =
-      prospect && (Array.isArray(prospect.companies) ? prospect.companies[0] : prospect.companies);
-    const name = `${prospect?.first_name ?? ""} ${prospect?.last_name ?? ""}`.trim();
-    return {
-      id: row.id,
-      prospectId: row.prospect_id,
-      name,
-      initials: name
-        .split(" ")
-        .map((part) => part[0])
-        .join("")
-        .slice(0, 2),
-      title: prospect?.title ?? "",
-      company: company?.name ?? "",
-      location: prospect?.location ?? "",
-      email: row.recipient_email,
-      emailStatus: prospect?.email_status ?? "Unknown",
-      score: row.confidence,
-      subject: row.subject,
-      body: row.body,
-      signature: row.signature_text,
-      complianceFooter: row.compliance_footer_text,
-      postalAddress: row.compliance_footer_text,
-      mailboxId: row.sending_mailbox_id,
-      mailbox:
-        row.sender_email && row.sender_name
-          ? `${row.sender_name} <${row.sender_email}>`
-          : row.sender_email || row.sending_mailbox_id,
-      sendingProvider: row.sending_provider,
-      selectionReason: "Qualified by campaign criteria",
-      companySummary: "Research available in the campaign record.",
-      signals: [],
-      angle: "See saved draft angle",
-      uncertainty: "",
-      sources: [],
-    };
-  });
+  return (data ?? [])
+    .map((row) => {
+      const prospect = Array.isArray(row.prospects) ? row.prospects[0] : row.prospects;
+      const company =
+        prospect &&
+        (Array.isArray(prospect.companies) ? prospect.companies[0] : prospect.companies);
+      const name = `${prospect?.first_name ?? ""} ${prospect?.last_name ?? ""}`.trim();
+      return {
+        id: row.id,
+        campaignId: row.campaign_id,
+        prospectId: row.prospect_id,
+        name,
+        initials: name
+          .split(" ")
+          .map((part) => part[0])
+          .join("")
+          .slice(0, 2),
+        title: prospect?.title ?? "",
+        company: company?.name ?? "",
+        location: prospect?.location ?? "",
+        email: row.recipient_email,
+        emailStatus: prospect?.email_status ?? "Unknown",
+        score: row.confidence,
+        subject: row.subject,
+        body: row.body,
+        signature: row.signature_text,
+        complianceFooter: row.compliance_footer_text,
+        postalAddress: row.compliance_footer_text,
+        mailboxId: row.sending_mailbox_id,
+        mailbox:
+          row.sender_email && row.sender_name
+            ? `${row.sender_name} <${row.sender_email}>`
+            : row.sender_email || row.sending_mailbox_id,
+        sendingProvider: row.sending_provider,
+        draftKind: row.draft_kind as "INITIAL" | "FOLLOW_UP",
+        followUpNumber: row.follow_up_number,
+        parentEmailSendId: row.parent_email_send_id,
+        selectionReason: "Qualified by campaign criteria",
+        companySummary: "Research available in the campaign record.",
+        signals: [],
+        angle: "See saved draft angle",
+        uncertainty: "",
+        sources: [],
+      };
+    })
+    .sort(
+      (left, right) =>
+        Number(right.draftKind === "FOLLOW_UP") - Number(left.draftKind === "FOLLOW_UP"),
+    );
 }
 
 export async function getDraft(id: string) {

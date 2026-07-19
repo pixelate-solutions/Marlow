@@ -1,4 +1,4 @@
-import { Check, FileCheck2, Pause, SearchCheck, Send, Sparkles } from "lucide-react";
+import { Check, Clock3, FileCheck2, Pause, SearchCheck, Send, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, Card, Progress } from "@marlow/ui";
@@ -32,14 +32,25 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       </div>
     );
   }
-  const drafts = await getDrafts();
+  const drafts = (await getDrafts()).filter((draft) => draft.campaignId === campaign.id);
   const steps = ["Search", "Qualify", "Enrich", "Research", "Write", "Review"];
   return (
     <div className="page">
+      {campaign.followUpNeeded > 0 ? (
+        <div className="status-banner status-banner--warning">
+          <Clock3 size={14} />
+          Follow-up needed. No reply was detected after 7 days, and a draft is ready for your
+          approval.
+        </div>
+      ) : null}
       <Card className="campaign-hero">
         <div className="campaign-hero__top">
           <div>
-            <Badge tone="success">{campaign.status.replaceAll("_", " ")}</Badge>
+            <Badge tone={campaign.followUpNeeded > 0 ? "warning" : "success"}>
+              {campaign.followUpNeeded > 0
+                ? "FOLLOW-UP NEEDED"
+                : campaign.status.replaceAll("_", " ")}
+            </Badge>
             <h1>{campaign.name}</h1>
             <p>{campaign.objective}</p>
           </div>
@@ -48,9 +59,12 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               <Pause size={14} />
               Pause
             </button>
-            <Link className="button button--primary button--md" href="/review">
+            <Link
+              className="button button--primary button--md"
+              href={campaign.followUpDraftId ? `/review/${campaign.followUpDraftId}` : "/review"}
+            >
               <FileCheck2 size={14} />
-              Review {campaign.drafts}
+              {campaign.followUpNeeded > 0 ? "Review follow-up" : `Review ${campaign.drafts}`}
             </Link>
           </div>
         </div>

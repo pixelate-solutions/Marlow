@@ -1289,6 +1289,18 @@ select:focus-visible {
 .campaign-card--amber::before {
   background: var(--amber);
 }
+.campaign-card--follow-up {
+  border: 2px solid #d89a3a;
+  background: linear-gradient(145deg, #fffaf1 0%, var(--paper) 42%);
+  box-shadow: 0 12px 30px rgb(113 77 24 / 10%);
+}
+.campaign-card--follow-up:hover {
+  border-color: #c27f1e;
+}
+.campaign-card--follow-up::before {
+  width: 5px;
+  background: #d89a3a;
+}
 .campaign-card__top {
   display: flex;
   align-items: flex-start;
@@ -1314,6 +1326,15 @@ select:focus-visible {
 }
 .campaign-card__action:hover {
   text-decoration: underline;
+}
+.campaign-card__follow-up {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 2px;
+  color: #7f5c27;
+  font-size: 9px;
+  font-weight: 650;
 }
 .campaign-card__stats {
   display: grid;
@@ -1730,6 +1751,15 @@ select:focus-visible {
 .draft-list-item--active {
   box-shadow: inset 3px 0 var(--accent);
 }
+.draft-list-item--follow-up {
+  background: #fffaf1;
+  box-shadow: inset 3px 0 #d89a3a;
+}
+.draft-list-item--follow-up:hover,
+.draft-list-item--follow-up.draft-list-item--active {
+  background: #fff5e4;
+  box-shadow: inset 4px 0 #c27f1e;
+}
 .draft-list-item__body {
   min-width: 0;
   flex: 1;
@@ -1753,6 +1783,15 @@ select:focus-visible {
 .draft-list-item__subject {
   color: var(--ink-2) !important;
   font-weight: 650;
+}
+.draft-list-item__flag {
+  display: inline-block;
+  margin-top: 3px;
+  color: #9a6418;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .draft-list-item .score {
   width: 27px;
@@ -1978,6 +2017,34 @@ select:focus-visible {
   color: #7f5c27;
   border-color: #efd8ab;
   background: var(--amber-soft);
+}
+.follow-up-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid #e2ad58;
+  border-radius: 10px;
+  color: #704b16;
+  background: #fff5e4;
+}
+.follow-up-banner svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.follow-up-banner strong,
+.follow-up-banner span {
+  display: block;
+}
+.follow-up-banner strong {
+  font-size: 11px;
+}
+.follow-up-banner span {
+  margin-top: 2px;
+  color: #8a662d;
+  font-size: 9px;
+  line-height: 1.5;
 }
 
 .integration-grid {

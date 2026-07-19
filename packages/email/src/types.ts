@@ -37,7 +37,19 @@ export type EmailSendResult = {
   raw: Record<string, unknown>;
 };
 
+export type EmailReplyLookup = {
+  recipientEmail: string;
+  sentAt: string;
+};
+
+export type EmailReplyResult = {
+  replied: boolean;
+  messageId?: string;
+  receivedAt?: string;
+};
+
 export interface EmailProvider {
   readonly provider: EmailProviderName;
   send(input: EmailSendInput): Promise<EmailSendResult>;
+  findReply(input: EmailReplyLookup): Promise<EmailReplyResult>;
 }

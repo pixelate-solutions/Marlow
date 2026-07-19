@@ -53,6 +53,7 @@ describe("runtime environment", () => {
           MODEL_API_KEY: "model-key",
           ENCRYPTION_KEY: "e".repeat(32),
           APPROVAL_SIGNING_SECRET: "a".repeat(32),
+          CRON_SECRET: "c".repeat(32),
         },
         { requireProductionSecrets: true, runtime: "web" },
       ),

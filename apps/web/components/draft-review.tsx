@@ -5,6 +5,7 @@ import {
   Ban,
   Building2,
   CheckCircle2,
+  Clock3,
   ExternalLink,
   FileWarning,
   Link2,
@@ -88,6 +89,7 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
       <div className="review-mobile-list" aria-label="Draft queue">
         {drafts.map((item) => (
           <Link href={`/review/${item.id}`} key={item.id}>
+            {item.draftKind === "FOLLOW_UP" ? "Follow-up: " : ""}
             {item.name} · {item.score}
           </Link>
         ))}
@@ -101,7 +103,7 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
           <div className="draft-list">
             {drafts.map((item) => (
               <Link
-                className={`draft-list-item${item.id === draft.id ? " draft-list-item--active" : ""}`}
+                className={`draft-list-item${item.id === draft.id ? " draft-list-item--active" : ""}${item.draftKind === "FOLLOW_UP" ? " draft-list-item--follow-up" : ""}`}
                 href={`/review/${item.id}`}
                 key={item.id}
               >
@@ -111,6 +113,9 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
                     <strong>{item.name}</strong>
                     <span className="score">{item.score}</span>
                   </div>
+                  {item.draftKind === "FOLLOW_UP" ? (
+                    <span className="draft-list-item__flag">Follow-up needed</span>
+                  ) : null}
                   <p>
                     {item.title} · {item.company}
                   </p>
@@ -145,12 +150,27 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
               </Button>
               <Button size="sm" disabled={busy !== null} onClick={approve}>
                 <Send size={13} />
-                {busy === "send" ? "Sending…" : "Approve and send"}
+                {busy === "send"
+                  ? "Sending…"
+                  : draft.draftKind === "FOLLOW_UP"
+                    ? "Approve and send follow-up"
+                    : "Approve and send"}
               </Button>
             </div>
           </header>
           <div className="review-content">
             <section className="email-pane">
+              {draft.draftKind === "FOLLOW_UP" ? (
+                <div className="follow-up-banner" role="status">
+                  <Clock3 size={16} />
+                  <div>
+                    <strong>Follow-up needed</strong>
+                    <span>
+                      No reply was detected after 7 days. Review this draft before sending it.
+                    </span>
+                  </div>
+                </div>
+              ) : null}
               {notice ? (
                 <div
                   className={`status-banner${notice.kind === "error" ? " status-banner--error" : ""}`}
@@ -249,7 +269,7 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
                   }
                 >
                   <Ban size={12} />
-                  Skip
+                  {draft.draftKind === "FOLLOW_UP" ? "Dismiss follow-up" : "Skip"}
                 </button>
                 <button
                   className="ai-action"

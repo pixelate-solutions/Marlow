@@ -19,7 +19,7 @@ Never run long campaign workflows inside a Vercel request.
 
 ## Vercel web
 
-Import the repository as a monorepo using the repository root. `vercel.json` installs the frozen pnpm lockfile and builds the `@marlow/web` dependency graph. Set the Supabase URL, publishable key, secret key, model key, encryption key, approval signing secret, and relevant search/guardrail variables. Set `NEXT_PUBLIC_APP_URL` to the canonical HTTPS origin and register the same origin with Supabase and Apollo. Apollo, Google, and Microsoft OAuth client values are feature-level configuration: the site can start without them, but users cannot connect the corresponding provider until they are present.
+Import the repository as a monorepo using the repository root. `vercel.json` installs the frozen pnpm lockfile and builds the `@marlow/web` dependency graph. Set the Supabase URL, publishable key, secret key, model key, encryption key, approval signing secret, `CRON_SECRET`, and relevant search/guardrail variables. Generate `CRON_SECRET` as at least 32 random bytes and never place it in source control. Set `NEXT_PUBLIC_APP_URL` to the canonical HTTPS origin and register the same origin with Supabase and Apollo. Apollo, Google, and Microsoft OAuth client values are feature-level configuration: the site can start without them, but users cannot connect the corresponding provider until they are present.
 
 For the current production origin, register these exact delegated-mail callbacks:
 
@@ -29,6 +29,8 @@ https://marlow-ashy.vercel.app/api/integrations/email/microsoft/callback
 ```
 
 Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_OAUTH_REDIRECT_URI` in Vercel. Set `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET`, `MICROSOFT_OAUTH_REDIRECT_URI`, and `MICROSOFT_OAUTH_TENANT` there too. Use `common` for the Microsoft tenant when both personal Microsoft accounts and work accounts should be allowed. Copy the client IDs and secrets to the worker environment if background email send jobs are enabled.
+
+Grant Google `gmail.send`, `gmail.readonly`, and `gmail.settings.basic`. Grant Microsoft delegated `Mail.Send` and `Mail.ReadBasic`. Reconnect existing mailboxes after changing permissions. Vercel calls `/api/cron/follow-ups` daily at 13:00 UTC and supplies `CRON_SECRET` as a bearer token. The route checks due sends for replies and prepares drafts only. It never sends email.
 
 Run a staging build before production:
 
@@ -70,6 +72,8 @@ A detached upload only means the build is queued. Keep polling the newest deploy
 8. Approve once and confirm the provider message reference, exact sender and content audit hashes, and a single send row.
 9. Confirm the message appears in the connected account’s Sent folder with the snapshotted signature and compliance footer.
 10. Disconnect each provider from Integrations and confirm encrypted credentials are removed.
+11. For a direct-mail test send, move the reply monitor due time forward in staging, run the secured follow-up cron, and confirm the campaign is flagged at the top with one draft.
+12. Send a reply before approving the follow-up and confirm the approval action cancels the draft without sending.
 
 ## Health and rollback
 

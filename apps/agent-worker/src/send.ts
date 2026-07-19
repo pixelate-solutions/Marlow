@@ -54,6 +54,8 @@ type SendRow = {
     subject: string;
     body: string;
     status: string;
+    draft_kind: "INITIAL" | "FOLLOW_UP";
+    parent_email_send_id: string | null;
   };
   campaigns: { status: string };
   organizations: { sending_settings: unknown };
@@ -192,7 +194,7 @@ export async function processSendJob(input: {
   const { data, error } = await input.client
     .from("email_sends")
     .select(
-      "*, approvals(*), outreach_drafts(recipient_email,sending_mailbox_id,sending_provider,sender_email,sender_name,signature_html,signature_text,compliance_footer_text,subject,body,status), campaigns(status), organizations(sending_settings)",
+      "*, approvals(*), outreach_drafts!email_sends_draft_id_fkey(recipient_email,sending_mailbox_id,sending_provider,sender_email,sender_name,signature_html,signature_text,compliance_footer_text,subject,body,status,draft_kind,parent_email_send_id), campaigns(status), organizations(sending_settings)",
     )
     .eq("id", input.sendId)
     .single();
@@ -264,6 +266,64 @@ export async function processSendJob(input: {
       !send.sender_name)
   )
     throw new Error("APPROVAL_MISMATCH");
+  if (direct && draft.draft_kind === "FOLLOW_UP" && draft.parent_email_send_id) {
+    const { data: originalSend, error: originalSendError } = await input.client
+      .from("email_sends")
+      .select("id,recipient_email,sent_at,created_at")
+      .eq("id", draft.parent_email_send_id)
+      .eq("organization_id", send.organization_id)
+      .single();
+    if (originalSendError) throw new Error(originalSendError.message);
+    const reply = await direct.provider.findReply({
+      recipientEmail: originalSend.recipient_email,
+      sentAt: originalSend.sent_at ?? originalSend.created_at,
+    });
+    if (reply.replied) {
+      const now = new Date().toISOString();
+      await Promise.all([
+        input.client
+          .from("email_sends")
+          .update({ status: "FAILED", last_error: "RECIPIENT_REPLIED" })
+          .eq("id", send.id)
+          .eq("status", "QUEUED"),
+        input.client.from("outreach_drafts").update({ status: "SKIPPED" }).eq("id", send.draft_id),
+      ]);
+      await input.client
+        .from("email_follow_up_monitors")
+        .update({
+          status: "REPLIED",
+          reply_message_id: reply.messageId ?? null,
+          reply_detected_at: reply.receivedAt ?? now,
+          last_checked_at: now,
+          last_error: null,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq("follow_up_draft_id", send.draft_id);
+      await input.client.from("audit_events").insert({
+        organization_id: send.organization_id,
+        actor_type: "SYSTEM",
+        action: "FOLLOW_UP_BLOCKED_BY_REPLY",
+        entity_type: "outreach_draft",
+        entity_id: send.draft_id,
+        campaign_id: send.campaign_id,
+        prospect_id: send.prospect_id,
+        immutable_data: {
+          originalSendId: originalSend.id,
+          replyMessageId: reply.messageId ?? null,
+          provider: direct.provider.provider,
+        },
+      });
+      log("info", "Follow-up send stopped because the recipient replied.", {
+        organizationId: send.organization_id,
+        campaignId: send.campaign_id,
+        prospectId: send.prospect_id,
+        provider: send.sending_provider,
+        sendOutcome: "RECIPIENT_REPLIED",
+      });
+      return;
+    }
+  }
   if (apollo) {
     const mailboxes = await apollo.listMailboxes();
     const mailbox = mailboxes.find((candidate) => candidate.id === send.sending_mailbox_id);

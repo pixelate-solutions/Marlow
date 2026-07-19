@@ -1,10 +1,24 @@
 import { createHash } from "node:crypto";
 import { htmlToPlainText } from "./content";
-import type { EmailProvider, EmailSendInput, EmailSendResult, ProviderMailbox } from "./types";
+import type {
+  EmailProvider,
+  EmailReplyLookup,
+  EmailReplyResult,
+  EmailSendInput,
+  EmailSendResult,
+  ProviderMailbox,
+} from "./types";
 
 function cleanHeader(value: string, field: string): string {
   if (/\r|\n/.test(value)) throw new Error(`${field} contains an invalid line break.`);
   return value.trim();
+}
+
+function cleanEmail(value: string, field: string): string {
+  const email = cleanHeader(value, field).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    throw new Error(`${field} is not a valid email address.`);
+  return email;
 }
 
 function quotedDisplayName(value: string): string {
@@ -121,6 +135,23 @@ export class GmailEmailProvider implements EmailProvider {
 
   constructor(private readonly accessToken: string) {}
 
+  async findReply(input: EmailReplyLookup): Promise<EmailReplyResult> {
+    const recipient = cleanEmail(input.recipientEmail, "Recipient");
+    const sentAt = new Date(input.sentAt);
+    if (Number.isNaN(sentAt.getTime())) throw new Error("Sent time is invalid.");
+    const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    url.searchParams.set("q", `from:${recipient} after:${Math.floor(sentAt.getTime() / 1_000)}`);
+    url.searchParams.set("maxResults", "1");
+    url.searchParams.set("includeSpamTrash", "true");
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" },
+    });
+    if (!response.ok) return providerError(response, "gmail");
+    const payload = (await response.json()) as { messages?: Array<{ id?: string }> };
+    const messageId = payload.messages?.[0]?.id;
+    return messageId ? { replied: true, messageId } : { replied: false };
+  }
+
   async send(input: EmailSendInput): Promise<EmailSendResult> {
     const raw = Buffer.from(buildMimeMessage(input), "utf8").toString("base64url");
     const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
@@ -155,6 +186,35 @@ export class MicrosoftEmailProvider implements EmailProvider {
   readonly provider = "MICROSOFT" as const;
 
   constructor(private readonly accessToken: string) {}
+
+  async findReply(input: EmailReplyLookup): Promise<EmailReplyResult> {
+    const recipient = cleanEmail(input.recipientEmail, "Recipient");
+    const sentAt = new Date(input.sentAt);
+    if (Number.isNaN(sentAt.getTime())) throw new Error("Sent time is invalid.");
+    const url = new URL("https://graph.microsoft.com/v1.0/me/messages");
+    const escapedRecipient = recipient.replaceAll("'", "''");
+    url.searchParams.set(
+      "$filter",
+      `receivedDateTime ge ${sentAt.toISOString()} and from/emailAddress/address eq '${escapedRecipient}'`,
+    );
+    url.searchParams.set("$select", "id,receivedDateTime,from");
+    url.searchParams.set("$top", "1");
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.accessToken}`, Accept: "application/json" },
+    });
+    if (!response.ok) return providerError(response, "microsoft");
+    const payload = (await response.json()) as {
+      value?: Array<{ id?: string; receivedDateTime?: string }>;
+    };
+    const reply = payload.value?.[0];
+    return reply?.id
+      ? {
+          replied: true,
+          messageId: reply.id,
+          ...(reply.receivedDateTime ? { receivedAt: reply.receivedDateTime } : {}),
+        }
+      : { replied: false };
+  }
 
   async send(input: EmailSendInput): Promise<EmailSendResult> {
     const response = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {

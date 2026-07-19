@@ -12,7 +12,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      "NEXT_PUBLIC_APP_URL=http://localhost:41783 DEMO_MODE=true MOCK_INTEGRATIONS=true pnpm exec next dev -p 41783",
+      "NEXT_PUBLIC_APP_URL=http://localhost:41783 CRON_SECRET=e2e-follow-up-secret-0001 DEMO_MODE=true MOCK_INTEGRATIONS=true pnpm exec next dev -p 41783",
     url: "http://localhost:41783",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

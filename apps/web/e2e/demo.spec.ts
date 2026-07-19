@@ -78,9 +78,15 @@ test.describe("deterministic collaborative campaign", () => {
     await expect(readinessIndicator).toContainText("36%");
     await expect(readinessLabel).toHaveText("36% ready");
 
-    await page.goto("/review");
+    await page.goto("/campaigns");
+    const followUpCampaign = page.locator(".campaign-card--follow-up").first();
+    await expect(followUpCampaign).toBeVisible();
+    await expect(followUpCampaign).toHaveCSS("border-color", "rgb(216, 154, 58)");
+    await expect(followUpCampaign.getByText("Follow-up needed", { exact: true })).toBeVisible();
+    await followUpCampaign.getByRole("link", { name: "Review follow-up" }).click();
     await expect(page).toHaveURL(/\/review\/70000000-0000-4000-8000-000000000001$/);
     await expect(page.getByRole("heading", { name: "Review queue" })).toBeVisible();
+    await expect(page.getByText("No reply was detected after 7 days.")).toBeVisible();
     if ((page.viewportSize()?.width ?? 1_000) >= 900) {
       const desktopSidebar = page.locator(".sidebar");
       const activeReviewLink = desktopSidebar.locator('.nav-link--active[href="/review"]');
@@ -94,7 +100,7 @@ test.describe("deterministic collaborative campaign", () => {
     }
     await expect(page.getByText("Supporting sources")).toBeVisible();
     const body = page.getByLabel("Email body");
-    await body.fill(`${await body.inputValue()}\n\nOpen to comparing notes next Tuesday?`);
+    await body.fill(`${await body.inputValue()}\n\nTuesday mornings also work for me.`);
     await page.getByRole("button", { name: /Approve and send/ }).click();
     await expect(page.getByText(/Demo send confirmed/i)).toBeVisible();
 
@@ -134,5 +140,14 @@ test.describe("deterministic collaborative campaign", () => {
       data: { name: "Cross-site campaign", objective: "Should fail" },
     });
     expect(response.status()).toBe(403);
+    const unauthorizedCron = await request.get("/api/cron/follow-ups");
+    expect(unauthorizedCron.status()).toBe(401);
+    const authorizedCron = await request.get("/api/cron/follow-ups", {
+      headers: { Authorization: "Bearer e2e-follow-up-secret-0001" },
+    });
+    expect(authorizedCron.ok()).toBe(true);
+    expect(await authorizedCron.json()).toEqual({
+      data: { checked: 0, replied: 0, draftsCreated: 0, errors: 0 },
+    });
   });
 });

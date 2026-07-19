@@ -3,17 +3,17 @@ begin;
 set local role postgres;
 set local search_path = public, extensions;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(11);
+select extensions.plan(13);
 
 select extensions.is(
   (select count(*)::integer from information_schema.tables where table_schema = 'public'),
-  29,
+  31,
   'all normalized public tables exist'
 );
 
 select extensions.is(
   (select count(*)::integer from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relrowsecurity),
-  29,
+  31,
   'RLS is enabled on every public table'
 );
 
@@ -96,6 +96,16 @@ select extensions.ok(
 select extensions.ok(
   not has_table_privilege(current_user, 'public.integration_credentials', 'SELECT'),
   'browser roles have no privilege to read encrypted integration credentials'
+);
+
+select extensions.ok(
+  not has_table_privilege(current_user, 'public.email_follow_up_monitors', 'SELECT'),
+  'browser roles cannot read reply-monitor metadata directly'
+);
+
+select extensions.ok(
+  has_table_privilege('service_role', 'public.email_follow_up_monitors', 'SELECT'),
+  'server-side workers can read reply-monitor metadata'
 );
 
 select * from extensions.finish();

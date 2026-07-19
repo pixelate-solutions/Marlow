@@ -17,6 +17,8 @@ export type CampaignBrowserItem = {
   sent: number;
   updated: string;
   color: "teal" | "blue" | "amber";
+  followUpNeeded: number;
+  followUpDraftId: string | null;
 };
 
 const filters = ["All", "Active", "Paused", "Complete"] as const;
@@ -69,7 +71,10 @@ export function CampaignBrowser({ campaigns }: { campaigns: CampaignBrowserItem[
       {visible.length > 0 ? (
         <div className="campaign-grid">
           {visible.map((campaign) => (
-            <Card className={`campaign-card campaign-card--${campaign.color}`} key={campaign.id}>
+            <Card
+              className={`campaign-card campaign-card--${campaign.color}${campaign.followUpNeeded > 0 ? " campaign-card--follow-up" : ""}`}
+              key={campaign.id}
+            >
               <div className="campaign-card__top">
                 <div>
                   <Link href={`/campaigns/${campaign.id}`}>
@@ -77,14 +82,32 @@ export function CampaignBrowser({ campaigns }: { campaigns: CampaignBrowserItem[
                   </Link>
                   <p className="campaign-card__objective">{campaign.objective}</p>
                 </div>
-                <Link className="campaign-card__action" href={`/campaigns/${campaign.id}`}>
-                  {campaign.status === "DISCOVERING"
-                    ? "Continue"
-                    : campaign.status === "READY"
-                      ? "Start"
-                      : "Open"}
+                <Link
+                  className="campaign-card__action"
+                  href={
+                    campaign.followUpDraftId
+                      ? `/review/${campaign.followUpDraftId}`
+                      : `/campaigns/${campaign.id}`
+                  }
+                >
+                  {campaign.followUpDraftId
+                    ? "Review follow-up"
+                    : campaign.status === "DISCOVERING"
+                      ? "Continue"
+                      : campaign.status === "READY"
+                        ? "Start"
+                        : "Open"}
                 </Link>
               </div>
+              {campaign.followUpNeeded > 0 ? (
+                <div className="campaign-card__follow-up">
+                  <Badge tone="warning">Follow-up needed</Badge>
+                  <span>
+                    {campaign.followUpNeeded} {campaign.followUpNeeded === 1 ? "draft" : "drafts"}{" "}
+                    ready for approval
+                  </span>
+                </div>
+              ) : null}
               <Badge
                 tone={
                   campaign.status === "PAUSED"

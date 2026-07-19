@@ -37,6 +37,7 @@ const baseSchema = z.object({
   MICROSOFT_OAUTH_TENANT: optionalString,
   ENCRYPTION_KEY: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
   APPROVAL_SIGNING_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
+  CRON_SECRET: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
   WEB_SEARCH_PROVIDER: z.enum(["meta", "mock"]).default("meta"),
   WEB_SEARCH_API_KEY: optionalString,
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(3),
@@ -83,6 +84,9 @@ function missingProductionVariables(environment: AppEnvironment, runtime: AppRun
   }
   if ((runtime === "web" || runtime === "all") && !environment.APPROVAL_SIGNING_SECRET) {
     missing.push("APPROVAL_SIGNING_SECRET");
+  }
+  if ((runtime === "web" || runtime === "all") && !environment.CRON_SECRET) {
+    missing.push("CRON_SECRET");
   }
   return missing;
 }

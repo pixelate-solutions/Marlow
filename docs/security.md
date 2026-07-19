@@ -2,7 +2,7 @@
 
 ## Tenant isolation and authorization
 
-Every tenant-owned table carries `organization_id`, has RLS enabled and forced, and uses membership helper functions. Browser clients have no policy for `integration_credentials`, `agent_jobs`, `approvals`, `email_sends`, or `rate_limits`; server-only operations use the service role. API routes still check membership and role before querying so authorization is layered rather than delegated only to RLS.
+Every tenant-owned table carries `organization_id`, has RLS enabled and forced, and uses membership helper functions. Browser clients have no policy for `integration_credentials`, `agent_jobs`, `approvals`, `email_sends`, `email_follow_up_monitors`, or `rate_limits`; server-only operations use the service role. API routes still check membership and role before querying so authorization is layered rather than delegated only to RLS.
 
 Supabase Auth sessions use secure HTTP-only cookies through `@supabase/ssr`. Write routes require a matching `Origin` and reject cross-site `Sec-Fetch-Site` values. Organization-scoped PostgreSQL rate limits protect expensive and send-capable operations.
 
@@ -11,6 +11,8 @@ Supabase Auth sessions use secure HTTP-only cookies through `@supabase/ssr`. Wri
 The direct user click creates an approval containing organization, user, prospect, draft, exact recipient, exact mailbox, SHA-256 subject and final-content hashes, timestamps, and a one-time random nonce hash. The final-content hash covers the body, text signature, HTML signature, and compliance footer. The PostgreSQL function locks the draft, checks membership, status, suppression and daily limits, creates the approval and unique send reservation, consumes the nonce, and writes an immutable audit event in one transaction.
 
 Immediately before calling the selected email provider, the application reloads everything and checks the same hashes, sending provider, sender address, sender name, and mailbox again. Draft or sender snapshot edits increment a revision, invalidate unconsumed approvals, and return the draft to pending review. Unique `(organization_id, idempotency_key)` and `approval_id` constraints prevent double clicks, request retries, and concurrent claims from creating another send.
+
+Follow-up drafts use the same approval and exact-send controls. A daily bearer-authenticated job claims due reply monitors with a lock lease. Gmail searches for a message from the recipient after the original send, and Microsoft reads only basic sender and received-time metadata. Marlow does not retrieve or store reply bodies. If there is no reply after seven days, the job creates one pending draft. It cannot invoke the send path. Immediately before approval creates a send reservation, Marlow checks the mailbox again and skips the draft if a late reply is present.
 
 ## Secrets and OAuth
 

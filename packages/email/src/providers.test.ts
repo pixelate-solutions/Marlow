@@ -44,6 +44,23 @@ describe("email providers", () => {
     );
   });
 
+  it("detects a Gmail reply using sender and send time metadata", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ messages: [{ id: "gmail-reply-1" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await new GmailEmailProvider("token").findReply({
+      recipientEmail: "maya@example.com",
+      sentAt: "2026-07-12T12:00:00.000Z",
+    });
+    expect(result).toEqual({ replied: true, messageId: "gmail-reply-1" });
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(url.searchParams.get("q")).toBe("from:maya@example.com after:1783857600");
+    expect(url.searchParams.get("includeSpamTrash")).toBe("true");
+  });
+
   it("sends through Microsoft Graph and records accepted status", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(null, {
@@ -57,5 +74,30 @@ describe("email providers", () => {
     expect(JSON.parse(String(options.body))).toMatchObject({
       message: { replyTo: [{ emailAddress: { address: "replies@example.com" } }] },
     });
+  });
+
+  it("detects an Outlook reply without requesting message bodies", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          value: [{ id: "outlook-reply-1", receivedDateTime: "2026-07-13T09:00:00.000Z" }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const result = await new MicrosoftEmailProvider("token").findReply({
+      recipientEmail: "maya@example.com",
+      sentAt: "2026-07-12T12:00:00.000Z",
+    });
+    expect(result).toEqual({
+      replied: true,
+      messageId: "outlook-reply-1",
+      receivedAt: "2026-07-13T09:00:00.000Z",
+    });
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(url.searchParams.get("$select")).toBe("id,receivedDateTime,from");
+    expect(url.searchParams.get("$filter")).toContain(
+      "from/emailAddress/address eq 'maya@example.com'",
+    );
   });
 });

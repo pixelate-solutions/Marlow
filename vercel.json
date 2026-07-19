@@ -3,5 +3,6 @@
   "framework": "nextjs",
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm turbo build --filter=@marlow/web",
-  "outputDirectory": "apps/web/.next"
+  "outputDirectory": "apps/web/.next",
+  "crons": [{ "path": "/api/cron/follow-ups", "schedule": "0 13 * * *" }]
 }

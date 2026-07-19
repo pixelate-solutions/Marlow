@@ -6,6 +6,7 @@ export const GOOGLE_OAUTH_SCOPES = [
   "email",
   "profile",
   "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.settings.basic",
 ] as const;
 
@@ -16,6 +17,7 @@ export const MICROSOFT_OAUTH_SCOPES = [
   "offline_access",
   "User.Read",
   "Mail.Send",
+  "Mail.ReadBasic",
 ] as const;
 
 export function createPkce(): { verifier: string; challenge: string } {

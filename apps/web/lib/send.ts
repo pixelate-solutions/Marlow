@@ -11,6 +11,22 @@ import { createSupabaseServerClient } from "./supabase/server";
 
 const demoSends = new Map<string, { sendId: string; externalMessageId: string; status: "SENT" }>();
 
+function replyLookupError(error: unknown): AppError {
+  if (error instanceof AppError) return error;
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("REAUTHORIZATION_REQUIRED"))
+    return new AppError(
+      "MAILBOX_REAUTHORIZATION_REQUIRED",
+      "Reconnect this mailbox so Marlow can check for replies before sending.",
+      409,
+    );
+  return new AppError(
+    "MAILBOX_PERMISSION_DENIED",
+    "Marlow could not check this mailbox for a reply. Reconnect it and approve the follow-up again.",
+    409,
+  );
+}
+
 function rpcError(error: { message: string }): AppError {
   const code = error.message.match(
     /(AUTHENTICATION_REQUIRED|INSUFFICIENT_PERMISSION|PROSPECT_SUPPRESSED|APPROVAL_EXPIRED|APPROVAL_MISMATCH|DAILY_LIMIT_REACHED|OUTSIDE_SENDING_WINDOW|DUPLICATE_SEND_PREVENTED)/,
@@ -79,7 +95,7 @@ export async function approveAndSend(input: {
   const admin = createSupabaseAdminClient();
   const { data: routingDraft, error: routingError } = await admin
     .from("outreach_drafts")
-    .select("sending_provider")
+    .select("sending_provider,draft_kind,parent_email_send_id,campaign_id,prospect_id")
     .eq("id", input.draftId)
     .eq("organization_id", input.auth.organizationId)
     .single();
@@ -127,7 +143,7 @@ export async function approveAndSend(input: {
     const { data: send, error: loadError } = await admin
       .from("email_sends")
       .select(
-        "*,approvals(*),outreach_drafts(subject,body,recipient_email,sending_mailbox_id,sending_provider,sender_email,sender_name,signature_html,signature_text,compliance_footer_text,status),campaigns(status)",
+        "*,approvals(*),outreach_drafts!email_sends_draft_id_fkey(subject,body,recipient_email,sending_mailbox_id,sending_provider,sender_email,sender_name,signature_html,signature_text,compliance_footer_text,status),campaigns(status)",
       )
       .eq("id", reserved.sendId)
       .eq("organization_id", input.auth.organizationId)
@@ -216,6 +232,68 @@ export async function approveAndSend(input: {
     if (suppression.error) throw new Error(suppression.error.message);
     if (suppression.data)
       throw new AppError("PROSPECT_SUPPRESSED", "This recipient is suppressed.", 409);
+    if (direct && routingDraft.draft_kind === "FOLLOW_UP" && routingDraft.parent_email_send_id) {
+      const { data: originalSend, error: originalSendError } = await admin
+        .from("email_sends")
+        .select("id,recipient_email,sent_at,created_at")
+        .eq("id", routingDraft.parent_email_send_id)
+        .eq("organization_id", input.auth.organizationId)
+        .single();
+      if (originalSendError) throw new Error(originalSendError.message);
+      let reply;
+      try {
+        reply = await direct.provider.findReply({
+          recipientEmail: originalSend.recipient_email,
+          sentAt: originalSend.sent_at ?? originalSend.created_at,
+        });
+      } catch (error) {
+        throw replyLookupError(error);
+      }
+      if (reply.replied) {
+        const now = new Date().toISOString();
+        await admin
+          .from("email_sends")
+          .update({ status: "FAILED", last_error: "RECIPIENT_REPLIED" })
+          .eq("id", send.id)
+          .eq("status", "QUEUED");
+        await admin
+          .from("outreach_drafts")
+          .update({ status: "SKIPPED" })
+          .eq("id", input.draftId)
+          .eq("status", "SENDING");
+        await admin
+          .from("email_follow_up_monitors")
+          .update({
+            status: "REPLIED",
+            reply_message_id: reply.messageId ?? null,
+            reply_detected_at: reply.receivedAt ?? now,
+            last_checked_at: now,
+            last_error: null,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq("follow_up_draft_id", input.draftId);
+        await admin.from("audit_events").insert({
+          organization_id: input.auth.organizationId,
+          actor_type: "SYSTEM",
+          action: "FOLLOW_UP_BLOCKED_BY_REPLY",
+          entity_type: "outreach_draft",
+          entity_id: input.draftId,
+          campaign_id: routingDraft.campaign_id,
+          prospect_id: routingDraft.prospect_id,
+          immutable_data: {
+            originalSendId: originalSend.id,
+            replyMessageId: reply.messageId ?? null,
+            provider: direct.provider.provider,
+          },
+        });
+        throw new AppError(
+          "RECIPIENT_REPLIED",
+          "This recipient replied after the follow-up was drafted, so Marlow stopped the send.",
+          409,
+        );
+      }
+    }
     const claim = await admin
       .from("email_sends")
       .update({ status: "SENDING", attempts: Number(send.attempts) + 1 })

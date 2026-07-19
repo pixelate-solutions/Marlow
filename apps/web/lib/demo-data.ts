@@ -19,6 +19,8 @@ export const demoCampaigns = [
     sent: 18,
     updated: "8 minutes ago",
     color: "teal" as const,
+    followUpNeeded: 1,
+    followUpDraftId: DEMO_IDS.draft,
   },
   {
     id: "20000000-0000-4000-8000-000000000002",
@@ -32,6 +34,8 @@ export const demoCampaigns = [
     sent: 6,
     updated: "2 minutes ago",
     color: "blue" as const,
+    followUpNeeded: 0,
+    followUpDraftId: null,
   },
   {
     id: "20000000-0000-4000-8000-000000000003",
@@ -45,6 +49,8 @@ export const demoCampaigns = [
     sent: 31,
     updated: "Yesterday",
     color: "amber" as const,
+    followUpNeeded: 0,
+    followUpDraftId: null,
   },
 ];
 
@@ -89,6 +95,7 @@ export const demoActivity = [
 export const demoDrafts = [
   {
     id: DEMO_IDS.draft,
+    campaignId: DEMO_IDS.campaign,
     prospectId: DEMO_IDS.prospect,
     name: "Maya Chen",
     initials: "MC",
@@ -98,8 +105,8 @@ export const demoDrafts = [
     email: "maya@acme.example",
     emailStatus: "Verified",
     score: 92,
-    subject: "Scaling operations",
-    body: "Maya, I saw Acme is expanding the operations team as its Midwest footprint grows. That often makes it harder to keep handoffs and reporting consistent across facilities.\n\nMarlow helps operations teams turn scattered workflow data into a clear daily view, without replacing the tools they already use.\n\nWould comparing notes for 15 minutes next week be useful?",
+    subject: "Re: Scaling operations",
+    body: "Maya, following up on my note about keeping handoffs and reporting consistent as Acme expands its Midwest operations. If improving that daily view is still relevant, I would be glad to share how similar operations teams approach it. Would a brief conversation next week be useful?",
     signature: "Alex Morgan\nFounder, Northstar",
     postalAddress: "123 Woodward Ave, Detroit, MI 48226",
     complianceFooter:
@@ -107,6 +114,9 @@ export const demoDrafts = [
     mailboxId: "demo-mailbox",
     mailbox: "alex@northstar.example",
     sendingProvider: "GMAIL",
+    draftKind: "FOLLOW_UP" as const,
+    followUpNumber: 1,
+    parentEmailSendId: "80000000-0000-4000-8000-000000000001",
     selectionReason: "Strong role, industry, and expansion-signal match",
     companySummary:
       "Acme Automation is a 420-person industrial automation company expanding its Midwest operations footprint.",
@@ -136,6 +146,7 @@ export const demoDrafts = [
   },
   {
     id: "70000000-0000-4000-8000-000000000002",
+    campaignId: "20000000-0000-4000-8000-000000000002",
     prospectId: "40000000-0000-4000-8000-000000000002",
     name: "Jon Bell",
     initials: "JB",
@@ -154,6 +165,9 @@ export const demoDrafts = [
     mailboxId: "demo-mailbox",
     mailbox: "alex@northstar.example",
     sendingProvider: "GMAIL",
+    draftKind: "INITIAL" as const,
+    followUpNumber: 0,
+    parentEmailSendId: null,
     selectionReason: "Expansion signal and senior operations ownership",
     companySummary: "Brightline Logistics operates a growing regional warehouse network.",
     signals: ["Opened a third warehouse", "Hiring site leaders"],
