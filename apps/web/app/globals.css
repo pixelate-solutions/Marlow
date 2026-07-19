@@ -1306,6 +1306,15 @@ select:focus-visible {
   color: var(--muted);
   font-size: 11px;
 }
+.campaign-card__action {
+  flex: 0 0 auto;
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 750;
+}
+.campaign-card__action:hover {
+  text-decoration: underline;
+}
 .campaign-card__stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1429,6 +1438,12 @@ select:focus-visible {
   border-top: 1px solid var(--line);
   background: #fafcfa;
 }
+.chat-compose__notice {
+  margin: 0 0 9px;
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 650;
+}
 .chat-compose__box {
   display: flex;
   align-items: flex-end;
@@ -1455,6 +1470,27 @@ select:focus-visible {
   border-radius: 10px;
   color: #fff;
   background: var(--accent-dark);
+}
+.campaign-ready-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 19px;
+  border-top: 1px solid var(--line);
+  background: var(--accent-soft);
+}
+.campaign-ready-actions strong,
+.campaign-ready-actions span {
+  display: block;
+}
+.campaign-ready-actions span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.campaign-ready-actions .campaign-ready-actions__error {
+  color: var(--red);
 }
 .profile-panel {
   padding: 19px;

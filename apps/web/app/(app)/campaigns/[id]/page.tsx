@@ -2,12 +2,36 @@ import { Check, FileCheck2, Pause, SearchCheck, Send, Sparkles } from "lucide-re
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, Card, Progress } from "@marlow/ui";
-import { getCampaign, getDrafts } from "@/lib/queries";
+import { CampaignChat } from "@/components/campaign-chat";
+import { PageHeader } from "@/components/page-header";
+import { getCampaign, getCampaignDiscovery, getDrafts } from "@/lib/queries";
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const campaign = await getCampaign(id);
   if (!campaign) notFound();
+  if (["DISCOVERING", "READY"].includes(campaign.status)) {
+    const discovery = await getCampaignDiscovery(id);
+    const ready = campaign.status === "READY";
+    return (
+      <div className="page page--narrow">
+        <PageHeader
+          title={ready ? "Campaign ready to start" : "Continue campaign discovery"}
+          description={
+            ready
+              ? "Review the completed profile, then start prospecting when you are ready."
+              : "Pick up where you left off. Your saved answers are already here."
+          }
+        />
+        <CampaignChat
+          initialCampaignId={id}
+          initialMessages={discovery.messages}
+          initialProgress={discovery.readinessScore}
+          initialReady={ready}
+        />
+      </div>
+    );
+  }
   const drafts = await getDrafts();
   const steps = ["Search", "Qualify", "Enrich", "Research", "Write", "Review"];
   return (

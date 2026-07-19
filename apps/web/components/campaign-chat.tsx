@@ -1,26 +1,47 @@
 "use client";
 
-import { CheckCircle2, CircleDashed, Send, Sparkles } from "lucide-react";
+import { CheckCircle2, CircleDashed, Play, Send, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
-type Message = {
+export type CampaignChatMessage = {
   role: "assistant" | "user";
   content: string;
   kind?: "error";
   retryContent?: string;
 };
 
-export function CampaignChat() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: "Tell me about your company, what you sell, and who you’re trying to reach.",
-    },
-  ]);
-  const [value, setValue] = useState("");
+const openingMessage: CampaignChatMessage = {
+  role: "assistant",
+  content: "Tell me about your company, what you sell, and who you’re trying to reach.",
+};
+
+export function CampaignChat({
+  initialCampaignId = null,
+  initialMessages,
+  initialProgress = 18,
+  initialReady = false,
+}: {
+  initialCampaignId?: string | null;
+  initialMessages?: CampaignChatMessage[];
+  initialProgress?: number;
+  initialReady?: boolean;
+}) {
+  const router = useRouter();
+  const startingMessages = initialMessages?.length ? initialMessages : [openingMessage];
+  const unansweredMessage =
+    initialCampaignId && startingMessages[startingMessages.length - 1]?.role === "user"
+      ? (startingMessages[startingMessages.length - 1]?.content ?? null)
+      : null;
+  const [messages, setMessages] = useState<CampaignChatMessage[]>(startingMessages);
+  const [value, setValue] = useState(unansweredMessage ?? "");
   const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState(18);
-  const [campaignId, setCampaignId] = useState<string | null>(null);
+  const [progress, setProgress] = useState(initialProgress);
+  const [campaignId, setCampaignId] = useState<string | null>(initialCampaignId);
+  const [pendingAnswer, setPendingAnswer] = useState<string | null>(unansweredMessage);
+  const [ready, setReady] = useState(initialReady);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -29,11 +50,16 @@ export function CampaignChat() {
     const lastMessage = messages[messages.length - 1];
     const retryingFailedTurn =
       lastMessage?.kind === "error" && lastMessage.retryContent === content;
+    const retryingSavedTurn =
+      Boolean(campaignId) && lastMessage?.role === "user" && lastMessage.content === content;
     const next = retryingFailedTurn
       ? messages.slice(0, -1)
-      : [...messages, { role: "user", content } satisfies Message];
+      : retryingSavedTurn
+        ? messages
+        : [...messages, { role: "user", content } satisfies CampaignChatMessage];
     setMessages(next);
     setValue("");
+    setPendingAnswer(content);
     setLoading(true);
     try {
       const response = campaignId
@@ -52,7 +78,7 @@ export function CampaignChat() {
             }),
           });
       const payload = (await response.json()) as {
-        data?: { id?: string; assistantMessage: string; readinessScore: number };
+        data?: { id?: string; assistantMessage: string; readinessScore: number; ready?: boolean };
         error?: { message: string };
       };
       if (!response.ok || !payload.data) {
@@ -72,6 +98,8 @@ export function CampaignChat() {
       }
       const data = payload.data;
       if (data.id) setCampaignId(data.id);
+      setPendingAnswer(null);
+      setReady(Boolean(data.ready));
       setMessages((current) => [
         ...current,
         {
@@ -94,6 +122,23 @@ export function CampaignChat() {
       ]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function startCampaign() {
+    if (!campaignId || starting) return;
+    setStarting(true);
+    setStartError(null);
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}/start`, { method: "POST" });
+      const payload = (await response.json()) as { error?: { message: string } };
+      if (!response.ok) throw new Error(payload.error?.message ?? "Campaign could not be started.");
+      router.push(`/campaigns/${campaignId}`);
+      router.refresh();
+    } catch (error) {
+      setStartError(error instanceof Error ? error.message : "Campaign could not be started.");
+    } finally {
+      setStarting(false);
     }
   }
 
@@ -126,20 +171,48 @@ export function CampaignChat() {
             </div>
           ))}
         </div>
-        <form className="chat-compose" onSubmit={submit}>
-          <div className="chat-compose__box">
-            <textarea
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              aria-label="Answer Marlow"
-              placeholder="Describe your offer and ideal customer…"
-              rows={2}
-            />
-            <button type="submit" aria-label="Send answer" disabled={loading || !value.trim()}>
-              <Send size={16} />
+        {ready ? (
+          <div className="campaign-ready-actions">
+            <div>
+              <strong>Campaign profile complete</strong>
+              <span>
+                Start prospecting when you are ready for Marlow to build the review queue.
+              </span>
+              {startError ? (
+                <span className="campaign-ready-actions__error">{startError}</span>
+              ) : null}
+            </div>
+            <button
+              className="button button--primary button--md"
+              type="button"
+              disabled={starting}
+              onClick={startCampaign}
+            >
+              <Play size={14} />
+              {starting ? "Starting campaign…" : "Start prospecting"}
             </button>
           </div>
-        </form>
+        ) : (
+          <form className="chat-compose" onSubmit={submit}>
+            {pendingAnswer && !loading ? (
+              <p className="chat-compose__notice">
+                Your last answer was saved. Select send to let Marlow continue.
+              </p>
+            ) : null}
+            <div className="chat-compose__box">
+              <textarea
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                aria-label="Answer Marlow"
+                placeholder="Describe your offer and ideal customer…"
+                rows={2}
+              />
+              <button type="submit" aria-label="Send answer" disabled={loading || !value.trim()}>
+                <Send size={16} />
+              </button>
+            </div>
+          </form>
+        )}
       </section>
       <aside className="card profile-panel">
         <h2>Campaign profile</h2>

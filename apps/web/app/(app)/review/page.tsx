@@ -1,10 +1,20 @@
 import { redirect } from "next/navigation";
-import { getDrafts } from "@/lib/queries";
+import { PageHeader } from "@/components/page-header";
+import { ReviewQueueEmptyState } from "@/components/review-queue-empty-state";
+import { getCampaigns, getDrafts } from "@/lib/queries";
 
 export const metadata = { title: "Review queue" };
 
 export default async function ReviewQueuePage() {
-  const drafts = await getDrafts();
+  const [drafts, campaigns] = await Promise.all([getDrafts(), getCampaigns()]);
   if (drafts[0]) redirect(`/review/${drafts[0].id}`);
-  return null;
+  return (
+    <div className="page">
+      <PageHeader
+        title="Review queue"
+        description="Review grounded email drafts before anything is approved or sent."
+      />
+      <ReviewQueueEmptyState campaigns={campaigns} />
+    </div>
+  );
 }

@@ -64,6 +64,10 @@ export async function POST(request: Request) {
       .select("id")
       .single();
     if (conversationError) throw new Error(conversationError.message);
+    const assistantMessage = input.initialMessage
+      ? "Thanks, that’s a useful starting point. Which roles feel the problem most directly, and who normally owns the buying decision?"
+      : "Tell me about your company, what you sell, and who you are trying to reach.";
+    const readinessScore = input.initialMessage ? 24 : 18;
     const messages = [
       {
         organization_id: auth.organizationId,
@@ -80,6 +84,14 @@ export async function POST(request: Request) {
               campaign_id: campaign.id,
               role: "user",
               content: input.initialMessage,
+            },
+            {
+              organization_id: auth.organizationId,
+              conversation_id: conversation.id,
+              campaign_id: campaign.id,
+              role: "assistant",
+              content: assistantMessage,
+              structured_data: { ready: false, readinessScore },
             },
           ]
         : []),
@@ -100,9 +112,9 @@ export async function POST(request: Request) {
     return apiOk(
       {
         ...campaign,
-        assistantMessage:
-          "Thanks, that’s a useful starting point. Which roles feel the problem most directly, and who normally owns the buying decision?",
-        readinessScore: 24,
+        assistantMessage,
+        readinessScore,
+        ready: false,
       },
       { status: 201 },
     );

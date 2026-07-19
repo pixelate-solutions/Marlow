@@ -76,6 +76,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       history.push({ role: "user", content: input.content });
     }
     const turn = await runDiscovery(history);
+    const readinessScore =
+      turn.profile?.readiness.score ?? Math.max(0, 100 - turn.missingRequiredFields.length * 7);
     const assistantMessageResult = await supabase.from("campaign_messages").insert({
       organization_id: auth.organizationId,
       conversation_id: conversation.id,
@@ -84,6 +86,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       content: turn.assistantMessage,
       structured_data: {
         ready: turn.ready,
+        readinessScore,
         missingRequiredFields: turn.missingRequiredFields,
         unresolvedQuestions: turn.unresolvedQuestions,
       },
@@ -118,8 +121,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     return apiOk({
       assistantMessage: turn.assistantMessage,
-      readinessScore:
-        turn.profile?.readiness.score ?? Math.max(0, 100 - turn.missingRequiredFields.length * 7),
+      readinessScore,
       ready: turn.ready,
     });
   } catch (error) {

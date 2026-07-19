@@ -77,6 +77,13 @@ export function CampaignBrowser({ campaigns }: { campaigns: CampaignBrowserItem[
                   </Link>
                   <p className="campaign-card__objective">{campaign.objective}</p>
                 </div>
+                <Link className="campaign-card__action" href={`/campaigns/${campaign.id}`}>
+                  {campaign.status === "DISCOVERING"
+                    ? "Continue"
+                    : campaign.status === "READY"
+                      ? "Start"
+                      : "Open"}
+                </Link>
               </div>
               <Badge
                 tone={

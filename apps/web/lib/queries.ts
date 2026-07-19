@@ -66,6 +66,57 @@ export async function getCampaign(id: string) {
   return campaigns.find((campaign) => campaign.id === id) ?? null;
 }
 
+export async function getCampaignDiscovery(id: string) {
+  if (isDemoMode())
+    return {
+      messages: [
+        {
+          role: "assistant" as const,
+          content: "Tell me about your company, what you sell, and who you’re trying to reach.",
+        },
+      ],
+      readinessScore: 18,
+    };
+  const auth = await getAuthContext();
+  if (!auth) return { messages: [], readinessScore: 18 };
+  const supabase = await createSupabaseServerClient();
+  const [messageResult, profileResult] = await Promise.all([
+    supabase
+      .from("campaign_messages")
+      .select("role,content,structured_data")
+      .eq("organization_id", auth.organizationId)
+      .eq("campaign_id", id)
+      .in("role", ["user", "assistant"])
+      .order("created_at", { ascending: true })
+      .limit(100),
+    supabase
+      .from("campaign_profiles")
+      .select("readiness_score")
+      .eq("organization_id", auth.organizationId)
+      .eq("campaign_id", id)
+      .eq("is_current", true)
+      .maybeSingle(),
+  ]);
+  const rows = messageResult.data ?? [];
+  const latestStructured = [...rows]
+    .reverse()
+    .map((row) => row.structured_data)
+    .find((value) => value && typeof value === "object") as
+    { readinessScore?: unknown } | undefined;
+  const savedScore = Number(latestStructured?.readinessScore);
+  const answerCount = rows.filter((row) => row.role === "user").length;
+  const estimatedScore = Math.min(82, 18 + answerCount * 12);
+  return {
+    messages: rows.map((row) => ({
+      role: row.role as "user" | "assistant",
+      content: row.content,
+    })),
+    readinessScore:
+      profileResult.data?.readiness_score ??
+      (Number.isFinite(savedScore) ? savedScore : estimatedScore),
+  };
+}
+
 export async function getDrafts() {
   if (isDemoMode()) return demoDrafts;
   const auth = await getAuthContext();
