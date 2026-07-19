@@ -672,6 +672,29 @@ select:focus-visible {
 .auth-form .button {
   width: 100%;
 }
+.auth-switch {
+  margin: 20px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.auth-switch a {
+  color: var(--ink);
+  font-weight: 750;
+}
+.auth-legal {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.auth-legal svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
 .auth-divider {
   display: flex;
   align-items: center;

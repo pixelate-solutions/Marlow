@@ -1,6 +1,17 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("deterministic collaborative campaign", () => {
+  test("offers a complete account creation path", async ({ page }) => {
+    await page.goto("/sign-up");
+    await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
+    await expect(page.getByLabel("Full name")).toBeVisible();
+    await expect(page.getByLabel("Work email")).toBeVisible();
+    await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Confirm password")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
+  });
+
   test("moves from discovery through an exactly-once approved demo send", async ({
     page,
     request,

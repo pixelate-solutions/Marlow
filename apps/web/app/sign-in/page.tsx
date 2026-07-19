@@ -78,13 +78,20 @@ export default async function SignInPage({
               Sign in <ArrowRight size={16} />
             </button>
           </form>
-          <div className="auth-divider">or</div>
-          <Link className="button button--secondary button--lg" href="/dashboard">
-            Open deterministic demo
-          </Link>
-          <div className="demo-callout">
-            <LockKeyhole size={15} /> Demo mode never connects to Apollo or sends real email.
-          </div>
+          <p className="auth-switch">
+            New to Marlow? <Link href="/sign-up">Create an account</Link>
+          </p>
+          {process.env.NODE_ENV !== "production" ? (
+            <>
+              <div className="auth-divider">or</div>
+              <Link className="button button--secondary button--lg" href="/dashboard">
+                Open deterministic demo
+              </Link>
+              <div className="demo-callout">
+                <LockKeyhole size={15} /> Demo mode never connects to Apollo or sends real email.
+              </div>
+            </>
+          ) : null}
         </div>
       </section>
     </main>

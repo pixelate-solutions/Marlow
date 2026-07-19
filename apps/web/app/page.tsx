@@ -19,8 +19,8 @@ export default function HomePage() {
         <div className="marketing__links">
           <a href="#how-it-works">How it works</a>
           <Link href="/sign-in">Sign in</Link>
-          <Link className="button button--primary button--md" href="/onboarding">
-            Start a campaign <ArrowRight size={15} />
+          <Link className="button button--primary button--md" href="/sign-up">
+            Create account <ArrowRight size={15} />
           </Link>
         </div>
       </nav>
@@ -38,12 +38,18 @@ export default function HomePage() {
             prepares thoughtful emails you can trust—then waits for your approval.
           </p>
           <div className="marketing__actions">
-            <Link className="button button--primary button--lg" href="/onboarding">
-              Build your first campaign <ArrowRight size={17} />
+            <Link className="button button--primary button--lg" href="/sign-up">
+              Create your workspace <ArrowRight size={17} />
             </Link>
-            <Link className="button button--secondary button--lg" href="/dashboard">
-              Explore the demo
-            </Link>
+            {process.env.NODE_ENV !== "production" ? (
+              <Link className="button button--secondary button--lg" href="/dashboard">
+                Explore the demo
+              </Link>
+            ) : (
+              <a className="button button--secondary button--lg" href="#how-it-works">
+                See how it works
+              </a>
+            )}
           </div>
           <div className="marketing__proof">
             <div className="proof-faces" aria-hidden="true">
