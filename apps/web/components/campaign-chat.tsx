@@ -3,7 +3,12 @@
 import { CheckCircle2, CircleDashed, Send, Sparkles } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
-type Message = { role: "assistant" | "user"; content: string };
+type Message = {
+  role: "assistant" | "user";
+  content: string;
+  kind?: "error";
+  retryContent?: string;
+};
 
 export function CampaignChat() {
   const [messages, setMessages] = useState<Message[]>([
@@ -21,7 +26,12 @@ export function CampaignChat() {
     event.preventDefault();
     const content = value.trim();
     if (!content || loading) return;
-    const next = [...messages, { role: "user", content } satisfies Message];
+    const lastMessage = messages[messages.length - 1];
+    const retryingFailedTurn =
+      lastMessage?.kind === "error" && lastMessage.retryContent === content;
+    const next = retryingFailedTurn
+      ? messages.slice(0, -1)
+      : [...messages, { role: "user", content } satisfies Message];
     setMessages(next);
     setValue("");
     setLoading(true);
@@ -42,29 +52,44 @@ export function CampaignChat() {
             }),
           });
       const payload = (await response.json()) as {
-        data?: { assistantMessage: string; readinessScore: number };
+        data?: { id?: string; assistantMessage: string; readinessScore: number };
         error?: { message: string };
       };
-      const created = payload.data as (typeof payload.data & { id?: string }) | undefined;
-      if (created?.id) setCampaignId(created.id);
+      if (!response.ok || !payload.data) {
+        setValue(content);
+        setMessages((current) => [
+          ...current,
+          {
+            role: "assistant",
+            kind: "error",
+            retryContent: content,
+            content:
+              payload.error?.message ??
+              "I couldn’t process that answer. Your answer is ready to retry.",
+          },
+        ]);
+        return;
+      }
+      const data = payload.data;
+      if (data.id) setCampaignId(data.id);
       setMessages((current) => [
         ...current,
         {
           role: "assistant",
-          content:
-            payload.data?.assistantMessage ??
-            payload.error?.message ??
-            "I couldn’t process that answer. Please try again.",
+          content: data.assistantMessage,
         },
       ]);
-      setProgress(payload.data?.readinessScore ?? Math.min(82, progress + 18));
+      setProgress(data.readinessScore);
     } catch {
+      setValue(content);
       setMessages((current) => [
         ...current,
         {
           role: "assistant",
+          kind: "error",
+          retryContent: content,
           content:
-            "The discovery service is temporarily unavailable. Your answer is still in this browser; please try again.",
+            "The discovery service is temporarily unavailable. Your answer is ready to retry.",
         },
       ]);
     } finally {

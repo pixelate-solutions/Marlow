@@ -1,7 +1,10 @@
+import { ModelUnavailableError } from "@marlow/agent";
+import { AppError } from "@marlow/shared";
 import { z } from "zod";
 import { apiError, apiOk } from "@/lib/api";
 import { isDemoMode, requireAuth } from "@/lib/auth";
 import { runDiscovery } from "@/lib/discovery";
+import { shouldStoreDiscoveryAnswer, type DiscoveryHistoryMessage } from "@/lib/discovery-messages";
 import { assertCsrf } from "@/lib/security";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -49,25 +52,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .eq("organization_id", auth.organizationId)
       .single();
     if (error) throw new Error(error.message);
-    await supabase.from("campaign_messages").insert({
-      organization_id: auth.organizationId,
-      conversation_id: conversation.id,
-      campaign_id: id,
-      role: "user",
-      content: input.content,
-    });
     const { data: rows, error: historyError } = await supabase
       .from("campaign_messages")
       .select("role,content")
       .eq("conversation_id", conversation.id)
       .in("role", ["user", "assistant"])
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(100);
     if (historyError) throw new Error(historyError.message);
-    const turn = await runDiscovery(
-      (rows ?? []).map((row) => ({ role: row.role as "user" | "assistant", content: row.content })),
-    );
-    await supabase.from("campaign_messages").insert({
+    const history: DiscoveryHistoryMessage[] = (rows ?? []).reverse().map((row) => ({
+      role: row.role as "user" | "assistant",
+      content: row.content,
+    }));
+    if (shouldStoreDiscoveryAnswer(history, input.content)) {
+      const userMessageResult = await supabase.from("campaign_messages").insert({
+        organization_id: auth.organizationId,
+        conversation_id: conversation.id,
+        campaign_id: id,
+        role: "user",
+        content: input.content,
+      });
+      if (userMessageResult.error) throw new Error(userMessageResult.error.message);
+      history.push({ role: "user", content: input.content });
+    }
+    const turn = await runDiscovery(history);
+    const assistantMessageResult = await supabase.from("campaign_messages").insert({
       organization_id: auth.organizationId,
       conversation_id: conversation.id,
       campaign_id: id,
@@ -79,6 +88,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         unresolvedQuestions: turn.unresolvedQuestions,
       },
     });
+    if (assistantMessageResult.error) throw new Error(assistantMessageResult.error.message);
     if (turn.ready && turn.profile) {
       await supabase
         .from("campaign_profiles")
@@ -113,6 +123,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ready: turn.ready,
     });
   } catch (error) {
+    if (error instanceof ModelUnavailableError) {
+      if (process.env.NODE_ENV !== "test") {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            message: "Campaign discovery model request failed",
+            error: error.message,
+          }),
+        );
+      }
+      return apiError(
+        new AppError(
+          "MODEL_UNAVAILABLE",
+          "Marlow could not complete that turn. Your answer was saved. Please select send to retry.",
+          503,
+        ),
+      );
+    }
     return apiError(error);
   }
 }
