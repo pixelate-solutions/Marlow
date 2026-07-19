@@ -1,10 +1,11 @@
-import { ModelUnavailableError } from "@marlow/agent";
-import { AppError } from "@marlow/shared";
+import { calculateReadiness, ModelUnavailableError } from "@marlow/agent";
+import { AppError, sendingSettingsSchema } from "@marlow/shared";
 import { z } from "zod";
 import { apiError, apiOk } from "@/lib/api";
 import { isDemoMode, requireAuth } from "@/lib/auth";
 import { runDiscovery } from "@/lib/discovery";
 import { shouldStoreDiscoveryAnswer, type DiscoveryHistoryMessage } from "@/lib/discovery-messages";
+import { getDefaultSendingMailbox } from "@/lib/mailboxes";
 import { assertCsrf } from "@/lib/security";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -27,7 +28,7 @@ function demoTurn(content: string) {
   if (/call|meeting|case study|customer|proof/.test(lower))
     return {
       assistantMessage:
-        "Almost there. Which Apollo mailbox should send, what daily cap should I enforce, and what postal address belongs in the footer?",
+        "Almost there. Which connected mailbox should send, what daily cap should I enforce, and what postal address belongs in the footer?",
       readinessScore: 86,
     };
   return {
@@ -75,7 +76,75 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (userMessageResult.error) throw new Error(userMessageResult.error.message);
       history.push({ role: "user", content: input.content });
     }
-    const turn = await runDiscovery(history);
+    const [mailbox, organizationResult] = await Promise.all([
+      getDefaultSendingMailbox(auth.organizationId),
+      supabase
+        .from("organizations")
+        .select("sending_settings")
+        .eq("id", auth.organizationId)
+        .single(),
+    ]);
+    if (organizationResult.error) throw new Error(organizationResult.error.message);
+    const settings = sendingSettingsSchema.safeParse(organizationResult.data.sending_settings);
+    const connectedMailbox = mailbox
+      ? {
+          id: mailbox.id,
+          email: mailbox.email,
+          displayName: mailbox.displayName,
+          signature:
+            mailbox.signatureText ||
+            [
+              settings.success ? settings.data.senderName : mailbox.displayName,
+              settings.success ? settings.data.senderTitle : "",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          postalAddress: settings.success ? settings.data.postalAddress : "",
+          ...(settings.success && settings.data.senderTitle
+            ? { senderTitle: settings.data.senderTitle }
+            : {}),
+        }
+      : undefined;
+    const modelTurn = await runDiscovery(history, connectedMailbox);
+    const profile =
+      modelTurn.profile && connectedMailbox
+        ? {
+            ...modelTurn.profile,
+            sender: {
+              ...modelTurn.profile.sender,
+              name: connectedMailbox.displayName,
+              sendingMailboxId: connectedMailbox.id,
+              signature: connectedMailbox.signature,
+              postalAddress: connectedMailbox.postalAddress,
+              ...(connectedMailbox.senderTitle ? { title: connectedMailbox.senderTitle } : {}),
+            },
+          }
+        : modelTurn.profile;
+    const readiness = profile ? calculateReadiness(profile) : null;
+    const turn = {
+      ...modelTurn,
+      assistantMessage:
+        modelTurn.ready && !connectedMailbox
+          ? "Your campaign details are ready. Connect Gmail or Microsoft and choose a default sender before starting."
+          : modelTurn.assistantMessage,
+      profile: profile
+        ? {
+            ...profile,
+            readiness: readiness ?? profile.readiness,
+          }
+        : undefined,
+      ready: Boolean(modelTurn.ready && profile && readiness?.ready && connectedMailbox),
+      missingRequiredFields: [
+        ...(readiness?.missingRequiredFields ?? modelTurn.missingRequiredFields),
+        ...(!connectedMailbox ? ["sender.sendingMailboxId"] : []),
+      ],
+      unresolvedQuestions: [
+        ...(readiness?.unresolvedQuestions ?? modelTurn.unresolvedQuestions),
+        ...(!connectedMailbox
+          ? ["Connect a Gmail or Microsoft mailbox and choose a default sender."]
+          : []),
+      ],
+    };
     const readinessScore =
       turn.profile?.readiness.score ?? Math.max(0, 100 - turn.missingRequiredFields.length * 7);
     const assistantMessageResult = await supabase.from("campaign_messages").insert({

@@ -1,6 +1,15 @@
-import { hashContent } from "@marlow/agent";
+import { hashApprovedBody, hashContent } from "@marlow/agent";
 import { ApolloMcpProvider, type ApolloProvider } from "@marlow/apollo";
-import { decryptSecret, type EncryptedSecret } from "@marlow/database";
+import { decryptSecret, encryptSecret, type EncryptedSecret } from "@marlow/database";
+import {
+  composeEmailContent,
+  GmailEmailProvider,
+  MicrosoftEmailProvider,
+  refreshAccessToken,
+  type EmailProvider,
+  type EmailProviderName,
+  type OAuthTokenSet,
+} from "@marlow/email";
 import { evaluateSendingWindow, sendingSettingsSchema } from "@marlow/shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { log } from "./logger";
@@ -12,6 +21,12 @@ type SendRow = {
   prospect_id: string;
   draft_id: string;
   sending_mailbox_id: string;
+  sending_provider: "APOLLO" | EmailProviderName;
+  sender_email: string;
+  sender_name: string;
+  signature_html: string;
+  signature_text: string;
+  compliance_footer_text: string;
   recipient_email: string;
   subject: string;
   body: string;
@@ -30,12 +45,26 @@ type SendRow = {
   outreach_drafts: {
     recipient_email: string;
     sending_mailbox_id: string;
+    sending_provider: "APOLLO" | EmailProviderName;
+    sender_email: string;
+    sender_name: string;
+    signature_html: string;
+    signature_text: string;
+    compliance_footer_text: string;
     subject: string;
     body: string;
     status: string;
   };
   campaigns: { status: string };
   organizations: { sending_settings: unknown };
+};
+
+type OAuthConfiguration = {
+  googleClientId?: string;
+  googleClientSecret?: string;
+  microsoftClientId?: string;
+  microsoftClientSecret?: string;
+  microsoftTenant?: string;
 };
 
 async function loadApollo(
@@ -66,17 +95,104 @@ async function loadApollo(
   return new ApolloMcpProvider({ url: mcpUrl, accessToken: tokens.accessToken });
 }
 
+async function loadEmailProvider(input: {
+  client: SupabaseClient;
+  organizationId: string;
+  mailboxId: string;
+  encryptionKey: string;
+  oauth: OAuthConfiguration;
+}): Promise<{ provider: EmailProvider; email: string; displayName: string; replyTo?: string }> {
+  const { data: mailbox, error: mailboxError } = await input.client
+    .from("sending_mailboxes")
+    .select("id,integration_id,provider,email,display_name,reply_to,status")
+    .eq("id", input.mailboxId)
+    .eq("organization_id", input.organizationId)
+    .single();
+  if (mailboxError || mailbox.status !== "AVAILABLE") throw new Error("MAILBOX_NOT_CONNECTED");
+  const { data: integration, error: integrationError } = await input.client
+    .from("integrations")
+    .select(
+      "id,status,integration_credentials(encrypted_payload,iv,auth_tag,key_version,expires_at)",
+    )
+    .eq("id", mailbox.integration_id)
+    .eq("organization_id", input.organizationId)
+    .single();
+  if (integrationError || integration.status !== "CONNECTED")
+    throw new Error("MAILBOX_REAUTHORIZATION_REQUIRED");
+  const raw = Array.isArray(integration.integration_credentials)
+    ? integration.integration_credentials[0]
+    : integration.integration_credentials;
+  if (!raw) throw new Error("MAILBOX_NOT_CONNECTED");
+  const encrypted: EncryptedSecret = {
+    ciphertext: String(raw.encrypted_payload),
+    iv: String(raw.iv),
+    authTag: String(raw.auth_tag),
+    keyVersion: Number(raw.key_version),
+  };
+  const providerName = mailbox.provider as EmailProviderName;
+  let tokens = JSON.parse(decryptSecret(encrypted, input.encryptionKey)) as OAuthTokenSet;
+  const expiresSoon =
+    !raw.expires_at || new Date(String(raw.expires_at)).getTime() <= Date.now() + 60_000;
+  if (expiresSoon) {
+    if (!tokens.refreshToken) throw new Error("MAILBOX_REAUTHORIZATION_REQUIRED");
+    const clientId =
+      providerName === "GMAIL" ? input.oauth.googleClientId : input.oauth.microsoftClientId;
+    const clientSecret =
+      providerName === "GMAIL" ? input.oauth.googleClientSecret : input.oauth.microsoftClientSecret;
+    if (!clientId || !clientSecret) throw new Error("MAILBOX_REAUTHORIZATION_REQUIRED");
+    const refreshed = await refreshAccessToken({
+      provider: providerName,
+      clientId,
+      clientSecret,
+      refreshToken: tokens.refreshToken,
+      ...(providerName === "MICROSOFT" && input.oauth.microsoftTenant
+        ? { tenant: input.oauth.microsoftTenant }
+        : {}),
+    });
+    tokens = {
+      ...tokens,
+      ...refreshed,
+      refreshToken: refreshed.refreshToken ?? tokens.refreshToken,
+    };
+    const stored = encryptSecret(JSON.stringify(tokens), input.encryptionKey);
+    const update = await input.client
+      .from("integration_credentials")
+      .update({
+        encrypted_payload: stored.ciphertext,
+        iv: stored.iv,
+        auth_tag: stored.authTag,
+        key_version: stored.keyVersion,
+        expires_at: refreshed.expiresIn
+          ? new Date(Date.now() + refreshed.expiresIn * 1_000).toISOString()
+          : null,
+      })
+      .eq("integration_id", integration.id);
+    if (update.error) throw new Error(update.error.message);
+  }
+  if (!tokens.accessToken) throw new Error("MAILBOX_REAUTHORIZATION_REQUIRED");
+  return {
+    provider:
+      providerName === "GMAIL"
+        ? new GmailEmailProvider(tokens.accessToken)
+        : new MicrosoftEmailProvider(tokens.accessToken),
+    email: String(mailbox.email),
+    displayName: String(mailbox.display_name),
+    ...(mailbox.reply_to ? { replyTo: String(mailbox.reply_to) } : {}),
+  };
+}
+
 export async function processSendJob(input: {
   client: SupabaseClient;
   sendId: string;
   encryptionKey: string;
   mcpUrl: string;
+  oauth?: OAuthConfiguration;
   mockApollo?: ApolloProvider;
 }): Promise<void> {
   const { data, error } = await input.client
     .from("email_sends")
     .select(
-      "*, approvals(*), outreach_drafts(recipient_email,sending_mailbox_id,subject,body,status), campaigns(status), organizations(sending_settings)",
+      "*, approvals(*), outreach_drafts(recipient_email,sending_mailbox_id,sending_provider,sender_email,sender_name,signature_html,signature_text,compliance_footer_text,subject,body,status), campaigns(status), organizations(sending_settings)",
     )
     .eq("id", input.sendId)
     .single();
@@ -89,15 +205,28 @@ export async function processSendJob(input: {
   const draft = send.outreach_drafts;
   if (!approval.consumed_at || new Date(approval.expires_at) <= new Date())
     throw new Error("APPROVAL_EXPIRED");
-  if (send.campaigns.status === "PAUSED") throw new Error("CAMPAIGN_PAUSED");
+  if (["PAUSED", "FAILED", "COMPLETED"].includes(send.campaigns.status))
+    throw new Error("CAMPAIGN_PAUSED");
   if (
     approval.recipient_email.toLowerCase() !== draft.recipient_email.toLowerCase() ||
     approval.sending_mailbox_id !== draft.sending_mailbox_id ||
     approval.subject_hash !== hashContent(draft.subject) ||
-    approval.body_hash !== hashContent(draft.body) ||
+    approval.body_hash !==
+      hashApprovedBody({
+        body: draft.body,
+        signatureText: draft.signature_text,
+        signatureHtml: draft.signature_html,
+        complianceFooterText: draft.compliance_footer_text,
+      }) ||
     send.recipient_email.toLowerCase() !== draft.recipient_email.toLowerCase() ||
     send.subject !== draft.subject ||
-    send.body !== draft.body
+    send.body !== draft.body ||
+    send.sending_provider !== draft.sending_provider ||
+    send.sender_email !== draft.sender_email ||
+    send.sender_name !== draft.sender_name ||
+    send.signature_html !== draft.signature_html ||
+    send.signature_text !== draft.signature_text ||
+    send.compliance_footer_text !== draft.compliance_footer_text
   )
     throw new Error("APPROVAL_MISMATCH");
   const domain = send.recipient_email.split("@")[1] ?? "";
@@ -114,13 +243,34 @@ export async function processSendJob(input: {
   if (!settings.success || !evaluateSendingWindow(settings.data).allowed)
     throw new Error("OUTSIDE_SENDING_WINDOW");
   const apollo =
-    input.mockApollo ??
-    (await loadApollo(input.client, send.organization_id, input.encryptionKey, input.mcpUrl));
-  let sendInvoked = false;
-  try {
+    send.sending_provider === "APOLLO"
+      ? (input.mockApollo ??
+        (await loadApollo(input.client, send.organization_id, input.encryptionKey, input.mcpUrl)))
+      : null;
+  const direct =
+    send.sending_provider === "APOLLO"
+      ? null
+      : await loadEmailProvider({
+          client: input.client,
+          organizationId: send.organization_id,
+          mailboxId: send.sending_mailbox_id,
+          encryptionKey: input.encryptionKey,
+          oauth: input.oauth ?? {},
+        });
+  if (
+    direct &&
+    (direct.email.toLowerCase() !== send.sender_email.toLowerCase() ||
+      !send.sender_email ||
+      !send.sender_name)
+  )
+    throw new Error("APPROVAL_MISMATCH");
+  if (apollo) {
     const mailboxes = await apollo.listMailboxes();
     const mailbox = mailboxes.find((candidate) => candidate.id === send.sending_mailbox_id);
     if (!mailbox || mailbox.status !== "available") throw new Error("APOLLO_MAILBOX_UNAVAILABLE");
+  }
+  let sendInvoked = false;
+  try {
     const claimed = await input.client
       .from("email_sends")
       .update({ status: "SENDING", attempts: Number(send.attempts) + 1 })
@@ -130,14 +280,31 @@ export async function processSendJob(input: {
       .maybeSingle();
     if (claimed.error) throw new Error(claimed.error.message);
     if (!claimed.data) return;
-    sendInvoked = true;
-    const result = await apollo.sendOneOffEmail({
-      mailboxId: send.sending_mailbox_id,
-      recipientEmail: send.recipient_email,
-      subject: send.subject,
+    const content = composeEmailContent({
       body: send.body,
-      idempotencyKey: send.idempotency_key,
+      signatureHtml: send.signature_html,
+      signatureText: send.signature_text,
+      complianceFooter: send.compliance_footer_text,
     });
+    sendInvoked = true;
+    const result = direct
+      ? await direct.provider.send({
+          mailboxEmail: send.sender_email,
+          displayName: send.sender_name || direct.displayName,
+          ...(direct.replyTo ? { replyTo: direct.replyTo } : {}),
+          recipientEmail: send.recipient_email,
+          subject: send.subject,
+          textBody: content.text,
+          htmlBody: content.html,
+          idempotencyKey: send.idempotency_key,
+        })
+      : await apollo!.sendOneOffEmail({
+          mailboxId: send.sending_mailbox_id,
+          recipientEmail: send.recipient_email,
+          subject: send.subject,
+          body: content.text,
+          idempotencyKey: send.idempotency_key,
+        });
     const now = new Date().toISOString();
     const completed = await input.client
       .from("email_sends")
@@ -169,16 +336,19 @@ export async function processSendJob(input: {
       immutable_data: {
         recipient: send.recipient_email,
         mailboxId: send.sending_mailbox_id,
+        provider: send.sending_provider,
+        senderEmail: send.sender_email,
         subject: send.subject,
-        body: send.body,
+        approvedBodyHash: approval.body_hash,
         externalMessageId: result.externalMessageId,
         idempotencyKey: send.idempotency_key,
       },
     });
-    log("info", "Apollo confirmed one-off email send.", {
+    log("info", "Connected mailbox confirmed one email send.", {
       organizationId: send.organization_id,
       campaignId: send.campaign_id,
       prospectId: send.prospect_id,
+      provider: send.sending_provider,
       sendOutcome: "SENT",
     });
   } catch (sendError) {
@@ -192,16 +362,17 @@ export async function processSendJob(input: {
       .eq("id", send.id);
     log(
       "error",
-      "Apollo send failed or returned an ambiguous outcome; automatic retry is disabled.",
+      "Email send failed or returned an ambiguous outcome; automatic retry is disabled.",
       {
         organizationId: send.organization_id,
         campaignId: send.campaign_id,
         prospectId: send.prospect_id,
+        provider: send.sending_provider,
         sendOutcome: "DELIVERY_UNKNOWN",
       },
     );
     throw new Error("DELIVERY_UNKNOWN_NO_AUTOMATIC_RETRY", { cause: sendError });
   } finally {
-    await apollo.disconnect();
+    await apollo?.disconnect();
   }
 }

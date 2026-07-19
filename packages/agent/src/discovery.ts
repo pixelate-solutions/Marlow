@@ -22,6 +22,14 @@ export class DiscoveryAgent {
     messages: Array<{ role: "user" | "assistant"; content: string }>;
     researchedCompanyFacts?: string[];
     currentProfile?: Partial<CampaignProfile>;
+    connectedMailbox?: {
+      id: string;
+      email: string;
+      displayName: string;
+      signature: string;
+      postalAddress: string;
+      senderTitle?: string;
+    };
   }): Promise<DiscoveryTurn> {
     const messages: ModelMessage[] = [
       { role: "system", content: this.systemPrompt },
@@ -30,6 +38,7 @@ export class DiscoveryAgent {
         content: `Discovery state (trusted application data): ${JSON.stringify({
           researchedCompanyFacts: input.researchedCompanyFacts ?? [],
           currentProfile: input.currentProfile ?? {},
+          connectedMailbox: input.connectedMailbox ?? null,
         })}. Ask exactly one useful question if not ready. Never repeat an answered question. If ready, return a complete validated campaign profile.`,
       },
       ...input.messages,

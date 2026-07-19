@@ -17,6 +17,7 @@
     "@marlow/apollo": "workspace:*",
     "@marlow/config": "workspace:*",
     "@marlow/database": "workspace:*",
+    "@marlow/email": "workspace:*",
     "@marlow/shared": "workspace:*",
     "@marlow/ui": "workspace:*",
     "@supabase/ssr": "0.12.3",

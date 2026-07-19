@@ -1,12 +1,26 @@
 import { PageHeader } from "@/components/page-header";
 import { SendingSettingsForm } from "@/components/sending-settings-form";
 import { SettingsNav } from "@/components/settings-nav";
+import { getAuthContext, isDemoMode } from "@/lib/auth";
+import { getSendingMailboxes } from "@/lib/mailboxes";
 import { getSendingSettings } from "@/lib/queries";
 
 export const metadata = { title: "Sending settings" };
 
 export default async function SendingSettingsPage() {
-  const settings = await getSendingSettings();
+  const [settings, auth] = await Promise.all([getSendingSettings(), getAuthContext()]);
+  const mailboxes =
+    auth && !isDemoMode()
+      ? await getSendingMailboxes(auth.organizationId)
+      : [
+          {
+            id: "demo-mailbox",
+            email: "alex@northstar.example",
+            displayName: "Alex Morgan",
+            provider: "GMAIL" as const,
+            status: "AVAILABLE" as const,
+          },
+        ];
   return (
     <div className="page page--narrow">
       <PageHeader
@@ -15,7 +29,7 @@ export default async function SendingSettingsPage() {
       />
       <div className="settings-layout">
         <SettingsNav current="sending" />
-        <SendingSettingsForm settings={settings} />
+        <SendingSettingsForm settings={settings} mailboxes={mailboxes} />
       </div>
     </div>
   );

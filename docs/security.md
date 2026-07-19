@@ -8,13 +8,13 @@ Supabase Auth sessions use secure HTTP-only cookies through `@supabase/ssr`. Wri
 
 ## Approval and duplicate-send prevention
 
-The direct user click creates an approval containing organization, user, prospect, draft, exact recipient, exact mailbox, SHA-256 subject/body hashes, timestamps, and a one-time random nonce hash. The PostgreSQL function locks the draft, checks membership, status, suppression and daily limits, creates the approval and unique send reservation, consumes the nonce, and writes an immutable audit event in one transaction.
+The direct user click creates an approval containing organization, user, prospect, draft, exact recipient, exact mailbox, SHA-256 subject and final-content hashes, timestamps, and a one-time random nonce hash. The final-content hash covers the body, text signature, HTML signature, and compliance footer. The PostgreSQL function locks the draft, checks membership, status, suppression and daily limits, creates the approval and unique send reservation, consumes the nonce, and writes an immutable audit event in one transaction.
 
-Immediately before Apollo, the application reloads everything and checks the same hashes and identities again. Draft edits increment a revision, invalidate unconsumed approvals, and return the draft to pending review. Unique `(organization_id, idempotency_key)` and `approval_id` constraints prevent double clicks, request retries, and concurrent claims from creating another send.
+Immediately before calling the selected email provider, the application reloads everything and checks the same hashes, sending provider, sender address, sender name, and mailbox again. Draft or sender snapshot edits increment a revision, invalidate unconsumed approvals, and return the draft to pending review. Unique `(organization_id, idempotency_key)` and `approval_id` constraints prevent double clicks, request retries, and concurrent claims from creating another send.
 
 ## Secrets and OAuth
 
-- Apollo payloads use AES-256-GCM with a random IV and authentication tag.
+- Apollo, Google, and Microsoft OAuth payloads use AES-256-GCM with a random IV and authentication tag.
 - `ENCRYPTION_KEY`, service-role keys, approval secrets, OAuth client secrets, and model keys are server-only.
 - OAuth state is signed, short-lived, user/organization bound, and coupled to PKCE.
 - Logs recursively redact token, cookie, authorization, password, secret, key, and credential fields.
@@ -34,4 +34,4 @@ Security headers include CSP, frame denial, MIME sniff prevention, restrictive r
 
 Audit events record campaign initiation, integration changes, search/tool metadata, credit use, research sources, draft revisions, approval identity/hashes, exact sent content, mailbox, Apollo message ID, and timestamps. Audit history uses soft deletion where evidence must remain.
 
-For an ambiguous delivery: pause the campaign, inspect the `email_sends` row and Apollo message history, never blindly replay the job, then reconcile the status with an administrative audit note.
+For an ambiguous delivery: pause the campaign, inspect the `email_sends` row and the connected provider’s Sent folder, never blindly replay the job, then reconcile the status with an administrative audit note.

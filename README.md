@@ -2,7 +2,7 @@
 
 Marlow is an AI-powered lead-generation and cold-outreach platform. A user describes a company, offer, and market in conversation; Muse Spark 1.1 builds a structured campaign profile, Apollo’s official remote MCP finds and enriches prospects, public research supplies cited evidence, and Marlow prepares concise emails for human review.
 
-Collaborative mode is mandatory. The model cannot call the send tool. A direct **Approve and send** action creates a short-lived, exact-draft approval and the application rechecks tenancy, hashes, recipient, mailbox, suppression, campaign state, and limits before Apollo is invoked.
+Collaborative mode is mandatory. The model cannot call the send tool. A direct **Approve and send** action creates a short-lived, exact-draft approval and the application rechecks tenancy, hashes, recipient, sender, signature, compliance footer, mailbox, suppression, campaign state, and limits before Gmail, Microsoft Graph, or a legacy Apollo mailbox is invoked.
 
 ## Architecture
 
@@ -15,6 +15,7 @@ apps/
 packages/
   agent/           Muse Spark provider, discovery, workflow, policy, approval
   apollo/          typed Apollo remote-MCP adapter and OAuth/PKCE
+  email/           Gmail and Microsoft OAuth, mailbox discovery, MIME, sending
   research/        grounded search and SSRF-safe public retrieval
   database/        Supabase repository, credential encryption, job claims
   shared/          Zod contracts, statuses, errors, product constants
@@ -60,10 +61,12 @@ Demo data is labeled, uses `.example` domains, consumes no Apollo credits, and s
 
 - **Model:** set `MODEL_API_KEY`; production is locked to `https://api.meta.ai/v1` and `muse-spark-1.1`. Errors are retried only when transient. There is no fallback model.
 - **Apollo:** register the callback in `APOLLO_OAUTH_REDIRECT_URI`, then set the Apollo OAuth client values. The app discovers OAuth metadata, uses PKCE and signed state, encrypts tokens with AES-256-GCM, and connects only to `https://mcp.apollo.io/mcp`. `APOLLO_API_KEY` is a REST credential and cannot replace MCP OAuth.
+- **Gmail:** set the Google OAuth client values and callback. Marlow sends through the Gmail API from a verified send-as address and imports that address’s configured HTML signature.
+- **Microsoft 365 and Outlook:** set the Microsoft OAuth client values and callback. Marlow sends through Microsoft Graph from the signed-in account and saves the message in Sent Items. Microsoft Graph does not expose Outlook signatures, so each Microsoft mailbox has a signature field in Marlow.
 - **Supabase:** apply all migrations, verify RLS, configure Auth redirect URLs, use the current publishable/secret keys, and keep `SUPABASE_SECRET_KEY` server-only. Legacy anon/service-role environment names remain supported during migration.
 - **Research:** production uses Meta search grounding plus safe public-page retrieval. Retrieved content remains untrusted model data.
 
-External setup details are in [Apollo MCP](docs/apollo-mcp.md), [deployment](docs/deployment.md), and [security](docs/security.md).
+External setup details are in [Apollo MCP](docs/apollo-mcp.md), [connected email](docs/email-providers.md), [deployment](docs/deployment.md), and [security](docs/security.md).
 
 ## Validation
 

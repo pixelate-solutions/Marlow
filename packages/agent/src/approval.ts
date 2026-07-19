@@ -7,6 +7,22 @@ export function hashContent(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+export function hashApprovedBody(input: {
+  body: string;
+  signatureText?: string;
+  signatureHtml?: string;
+  complianceFooterText?: string;
+}): string {
+  return hashContent(
+    [
+      input.body,
+      input.signatureText ?? "",
+      input.signatureHtml ?? "",
+      input.complianceFooterText ?? "",
+    ].join(String.fromCharCode(30)),
+  );
+}
+
 export function signApproval(context: ApprovalContext, secret: string): string {
   const payload = Buffer.from(JSON.stringify(context)).toString("base64url");
   const signature = createHmac("sha256", secret).update(payload).digest("base64url");

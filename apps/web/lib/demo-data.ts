@@ -102,8 +102,11 @@ export const demoDrafts = [
     body: "Maya, I saw Acme is expanding the operations team as its Midwest footprint grows. That often makes it harder to keep handoffs and reporting consistent across facilities.\n\nMarlow helps operations teams turn scattered workflow data into a clear daily view, without replacing the tools they already use.\n\nWould comparing notes for 15 minutes next week be useful?",
     signature: "Alex Morgan\nFounder, Northstar",
     postalAddress: "123 Woodward Ave, Detroit, MI 48226",
+    complianceFooter:
+      "123 Woodward Ave, Detroit, MI 48226\nNot relevant? Reply and I won’t follow up.",
     mailboxId: "demo-mailbox",
     mailbox: "alex@northstar.example",
+    sendingProvider: "GMAIL",
     selectionReason: "Strong role, industry, and expansion-signal match",
     companySummary:
       "Acme Automation is a 420-person industrial automation company expanding its Midwest operations footprint.",
@@ -146,8 +149,11 @@ export const demoDrafts = [
     body: "Jon, Brightline’s recent warehouse expansion stood out. Northstar helps logistics operations teams keep a consistent view of workflow bottlenecks as sites come online.\n\nWould a brief comparison next week be useful?",
     signature: "Alex Morgan\nFounder, Northstar",
     postalAddress: "123 Woodward Ave, Detroit, MI 48226",
+    complianceFooter:
+      "123 Woodward Ave, Detroit, MI 48226\nNot relevant? Reply and I won’t follow up.",
     mailboxId: "demo-mailbox",
     mailbox: "alex@northstar.example",
+    sendingProvider: "GMAIL",
     selectionReason: "Expansion signal and senior operations ownership",
     companySummary: "Brightline Logistics operates a growing regional warehouse network.",
     signals: ["Opened a third warehouse", "Hiring site leaders"],
@@ -167,6 +173,7 @@ export const demoDrafts = [
 ];
 
 export const demoSendingSettings = {
+  defaultMailboxId: "demo-mailbox",
   senderName: "Alex Morgan",
   senderTitle: "Founder",
   postalAddress: "123 Woodward Ave, Detroit, MI 48226",

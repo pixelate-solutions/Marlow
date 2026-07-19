@@ -2,6 +2,7 @@ import { sendingSettingsSchema } from "@marlow/shared";
 import { apiError, apiOk } from "@/lib/api";
 import { isDemoMode, requireAuth } from "@/lib/auth";
 import { demoSendingSettings } from "@/lib/demo-data";
+import { setDefaultMailbox } from "@/lib/mailboxes";
 import { assertCsrf } from "@/lib/security";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -31,6 +32,11 @@ export async function PATCH(request: Request) {
       return apiOk({
         ...input,
         message: "Demo sending guardrails saved locally for this request.",
+      });
+    if (input.defaultMailboxId)
+      await setDefaultMailbox({
+        organizationId: auth.organizationId,
+        mailboxId: input.defaultMailboxId,
       });
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase

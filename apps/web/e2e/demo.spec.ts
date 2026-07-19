@@ -36,7 +36,22 @@ test.describe("deterministic collaborative campaign", () => {
     }
 
     await page.goto("/integrations");
-    await expect(page.getByText("Demo connected", { exact: true })).toBeVisible();
+    const gmailCard = page.locator(".integration-card").filter({
+      has: page.getByRole("heading", { name: "Gmail and Google Workspace" }),
+    });
+    await expect(gmailCard.getByText("Connected", { exact: true })).toBeVisible();
+    await expect(gmailCard.getByText("alex@northstar.example", { exact: true })).toBeVisible();
+    await expect(gmailCard.getByLabel("Email signature")).toHaveValue(
+      "Alex Morgan\nFounder, Northstar",
+    );
+    const outlookCard = page.locator(".integration-card").filter({
+      has: page.getByRole("heading", { name: "Microsoft 365 and Outlook" }),
+    });
+    await expect(outlookCard.getByText("Connected", { exact: true })).toBeVisible();
+    await expect(outlookCard.getByText("alex@northstar.example", { exact: true })).toBeVisible();
+    await expect(outlookCard.getByLabel("Email signature")).toHaveValue(
+      "Alex Morgan\nFounder, Northstar",
+    );
     await expect(page.getByText("muse-spark-1.1", { exact: true })).toBeVisible();
 
     await page.goto("/campaigns/new");

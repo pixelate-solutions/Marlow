@@ -212,6 +212,23 @@ async function processJob(job: AgentJob): Promise<void> {
         sendId: String(job.payload.sendId),
         encryptionKey: environment.ENCRYPTION_KEY ?? Buffer.alloc(32).toString("base64"),
         mcpUrl: environment.APOLLO_MCP_URL,
+        oauth: {
+          ...(environment.GOOGLE_OAUTH_CLIENT_ID
+            ? { googleClientId: environment.GOOGLE_OAUTH_CLIENT_ID }
+            : {}),
+          ...(environment.GOOGLE_OAUTH_CLIENT_SECRET
+            ? { googleClientSecret: environment.GOOGLE_OAUTH_CLIENT_SECRET }
+            : {}),
+          ...(environment.MICROSOFT_OAUTH_CLIENT_ID
+            ? { microsoftClientId: environment.MICROSOFT_OAUTH_CLIENT_ID }
+            : {}),
+          ...(environment.MICROSOFT_OAUTH_CLIENT_SECRET
+            ? { microsoftClientSecret: environment.MICROSOFT_OAUTH_CLIENT_SECRET }
+            : {}),
+          ...(environment.MICROSOFT_OAUTH_TENANT
+            ? { microsoftTenant: environment.MICROSOFT_OAUTH_TENANT }
+            : {}),
+        },
         ...(environment.MOCK_INTEGRATIONS ? { mockApollo: new MockApolloProvider() } : {}),
       });
     }

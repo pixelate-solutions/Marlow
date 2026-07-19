@@ -283,6 +283,9 @@ export class CampaignOrchestrator {
           prospectId: saved.id,
           recipientEmail: person.email,
           mailboxId: campaign.profile.sender.sendingMailboxId ?? "",
+          senderName: campaign.profile.sender.name,
+          signatureText: campaign.profile.sender.signature,
+          postalAddress: campaign.profile.sender.postalAddress,
           draft,
         });
         draftsCreated += 1;

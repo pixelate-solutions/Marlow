@@ -17,6 +17,10 @@ function unwrap<T>(result: {
   return result.data;
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export class SupabaseAgentRepository implements AgentRepository {
   constructor(private readonly client: SupabaseClient) {}
 
@@ -241,6 +245,36 @@ export class SupabaseAgentRepository implements AgentRepository {
   }
 
   async saveDraft(input: Parameters<AgentRepository["saveDraft"]>[0]): Promise<{ id: string }> {
+    const [mailboxResult, organizationResult] = await Promise.all([
+      isUuid(input.mailboxId)
+        ? this.client
+            .from("sending_mailboxes")
+            .select(
+              "id,provider,email,display_name,signature_html,signature_text,status,is_default",
+            )
+            .eq("id", input.mailboxId)
+            .eq("organization_id", input.organizationId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      this.client
+        .from("organizations")
+        .select("sending_settings")
+        .eq("id", input.organizationId)
+        .single(),
+    ]);
+    if (mailboxResult.error) throw new Error(mailboxResult.error.message);
+    if (organizationResult.error) throw new Error(organizationResult.error.message);
+    const mailbox = mailboxResult.data;
+    if (isUuid(input.mailboxId) && !mailbox) throw new Error("MAILBOX_NOT_AVAILABLE");
+    if (mailbox && mailbox.status !== "AVAILABLE") throw new Error("MAILBOX_NOT_AVAILABLE");
+    const settings = (organizationResult.data.sending_settings ?? {}) as Record<string, unknown>;
+    const footer = [
+      input.postalAddress,
+      typeof settings.unsubscribeText === "string" ? settings.unsubscribeText : "",
+      typeof settings.unsubscribeUrl === "string" ? settings.unsubscribeUrl : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
     const data = unwrap(
       await this.client
         .from("outreach_drafts")
@@ -250,6 +284,12 @@ export class SupabaseAgentRepository implements AgentRepository {
           prospect_id: input.prospectId,
           recipient_email: input.recipientEmail.toLowerCase(),
           sending_mailbox_id: input.mailboxId,
+          sending_provider: mailbox?.provider ?? "APOLLO",
+          sender_email: mailbox?.email ?? "",
+          sender_name: mailbox?.display_name ?? input.senderName,
+          signature_html: mailbox?.signature_html ?? "",
+          signature_text: mailbox?.signature_text || input.signatureText,
+          compliance_footer_text: footer,
           subject: input.draft.subject,
           body: input.draft.body,
           personalization_summary: input.draft.personalizationSummary,

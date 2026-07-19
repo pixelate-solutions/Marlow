@@ -98,6 +98,9 @@ export interface AgentRepository {
     prospectId: string;
     recipientEmail: string;
     mailboxId: string;
+    senderName: string;
+    signatureText: string;
+    postalAddress: string;
     draft: OutreachDraft;
   }): Promise<{ id: string }>;
 }

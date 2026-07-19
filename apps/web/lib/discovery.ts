@@ -4,6 +4,14 @@ import { DiscoveryAgent, MuseSparkProvider } from "@marlow/agent";
 
 export async function runDiscovery(
   messages: Array<{ role: "user" | "assistant"; content: string }>,
+  connectedMailbox?: {
+    id: string;
+    email: string;
+    displayName: string;
+    signature: string;
+    postalAddress: string;
+    senderTitle?: string;
+  },
 ) {
   const apiKey = process.env.MODEL_API_KEY;
   if (!apiKey) throw new Error("MODEL_API_KEY is not configured.");
@@ -15,5 +23,8 @@ export async function runDiscovery(
       ? { baseUrl: process.env.META_MODEL_API_BASE_URL }
       : {}),
   });
-  return new DiscoveryAgent(provider, systemPrompt).respond({ messages });
+  return new DiscoveryAgent(provider, systemPrompt).respond({
+    messages,
+    ...(connectedMailbox ? { connectedMailbox } : {}),
+  });
 }

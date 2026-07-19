@@ -7,7 +7,21 @@ import type { demoSendingSettings } from "@/lib/demo-data";
 
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export function SendingSettingsForm({ settings }: { settings: typeof demoSendingSettings }) {
+type MailboxOption = {
+  id: string;
+  email: string;
+  displayName: string;
+  provider: "GMAIL" | "MICROSOFT";
+  status: "AVAILABLE" | "UNAVAILABLE" | "REAUTHORIZATION_REQUIRED";
+};
+
+export function SendingSettingsForm({
+  settings,
+  mailboxes,
+}: {
+  settings: typeof demoSendingSettings;
+  mailboxes: MailboxOption[];
+}) {
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -15,6 +29,7 @@ export function SendingSettingsForm({ settings }: { settings: typeof demoSending
     setSaving(true);
     const data = new FormData(event.currentTarget);
     const payload = {
+      defaultMailboxId: data.get("defaultMailboxId"),
       senderName: data.get("senderName"),
       senderTitle: data.get("senderTitle"),
       postalAddress: data.get("postalAddress"),
@@ -51,7 +66,29 @@ export function SendingSettingsForm({ settings }: { settings: typeof demoSending
       ) : null}
       <section className="settings-section">
         <h2>Sender identity</h2>
-        <p>This identity and postal address appear in every approved message.</p>
+        <p>
+          The selected address, its saved signature, and this postal address appear in every
+          approved message.
+        </p>
+        <div className="field">
+          <label htmlFor="defaultMailboxId">Default sending mailbox</label>
+          <select
+            className="select"
+            id="defaultMailboxId"
+            name="defaultMailboxId"
+            defaultValue={settings.defaultMailboxId}
+          >
+            <option value="">Choose a connected mailbox</option>
+            {mailboxes.map((mailbox) => (
+              <option value={mailbox.id} key={mailbox.id} disabled={mailbox.status !== "AVAILABLE"}>
+                {mailbox.email} ({mailbox.provider === "GMAIL" ? "Google" : "Microsoft"})
+              </option>
+            ))}
+          </select>
+          <span className="field__hint">
+            Connect or edit mailbox signatures from the Integrations page.
+          </span>
+        </div>
         <div className="form-grid">
           <div className="field">
             <label htmlFor="senderName">Sender name</label>
@@ -202,7 +239,7 @@ export function SendingSettingsForm({ settings }: { settings: typeof demoSending
       <div className="settings-actions">
         <Button type="submit" disabled={saving}>
           <Save size={14} />
-          {saving ? "Saving…" : "Save settings"}
+          {saving ? "Saving..." : "Save settings"}
         </Button>
       </div>
     </form>

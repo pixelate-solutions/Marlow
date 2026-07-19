@@ -125,7 +125,7 @@ export async function getDrafts() {
   const { data } = await supabase
     .from("outreach_drafts")
     .select(
-      "id,prospect_id,recipient_email,sending_mailbox_id,subject,body,confidence,prospects(first_name,last_name,title,location,email_status,companies(name)),campaigns(name)",
+      "id,prospect_id,recipient_email,sending_mailbox_id,sending_provider,sender_email,sender_name,signature_text,compliance_footer_text,subject,body,confidence,prospects(first_name,last_name,title,location,email_status,companies(name)),campaigns(name)",
     )
     .eq("organization_id", auth.organizationId)
     .eq("status", "PENDING_USER_APPROVAL")
@@ -153,10 +153,15 @@ export async function getDrafts() {
       score: row.confidence,
       subject: row.subject,
       body: row.body,
-      signature: "",
-      postalAddress: "",
+      signature: row.signature_text,
+      complianceFooter: row.compliance_footer_text,
+      postalAddress: row.compliance_footer_text,
       mailboxId: row.sending_mailbox_id,
-      mailbox: row.sending_mailbox_id,
+      mailbox:
+        row.sender_email && row.sender_name
+          ? `${row.sender_name} <${row.sender_email}>`
+          : row.sender_email || row.sending_mailbox_id,
+      sendingProvider: row.sending_provider,
       selectionReason: "Qualified by campaign criteria",
       companySummary: "Research available in the campaign record.",
       signals: [],

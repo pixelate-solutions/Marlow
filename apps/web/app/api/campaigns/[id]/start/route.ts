@@ -5,6 +5,7 @@ import { assertCsrf } from "@/lib/security";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AppError } from "@marlow/shared";
+import { getDefaultSendingMailbox } from "@/lib/mailboxes";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -23,6 +24,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (error) throw new AppError("NOT_FOUND", "Campaign was not found.", 404);
     if (campaign.status !== "READY" && campaign.status !== "PAUSED" && campaign.status !== "FAILED")
       throw new AppError("CONFLICT", "Campaign is not ready to start.", 409);
+    const mailbox = await getDefaultSendingMailbox(auth.organizationId);
+    if (!mailbox)
+      throw new AppError(
+        "MAILBOX_NOT_CONNECTED",
+        "Connect Gmail or Microsoft and choose a default sending mailbox before starting.",
+        409,
+      );
     const admin = createSupabaseAdminClient();
     const { data: run, error: runError } = await admin
       .from("agent_runs")

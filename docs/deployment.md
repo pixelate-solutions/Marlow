@@ -19,7 +19,16 @@ Never run long campaign workflows inside a Vercel request.
 
 ## Vercel web
 
-Import the repository as a monorepo using the repository root. `vercel.json` installs the frozen pnpm lockfile and builds the `@marlow/web` dependency graph. Set the Supabase URL, publishable key, secret key, model key, encryption key, approval signing secret, and relevant search/guardrail variables. Set `NEXT_PUBLIC_APP_URL` to the canonical HTTPS origin and register the same origin with Supabase and Apollo. Apollo OAuth client values are feature-level configuration: the site can start without them, but users cannot connect Apollo MCP until they are present.
+Import the repository as a monorepo using the repository root. `vercel.json` installs the frozen pnpm lockfile and builds the `@marlow/web` dependency graph. Set the Supabase URL, publishable key, secret key, model key, encryption key, approval signing secret, and relevant search/guardrail variables. Set `NEXT_PUBLIC_APP_URL` to the canonical HTTPS origin and register the same origin with Supabase and Apollo. Apollo, Google, and Microsoft OAuth client values are feature-level configuration: the site can start without them, but users cannot connect the corresponding provider until they are present.
+
+For the current production origin, register these exact delegated-mail callbacks:
+
+```text
+https://marlow-ashy.vercel.app/api/integrations/email/google/callback
+https://marlow-ashy.vercel.app/api/integrations/email/microsoft/callback
+```
+
+Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_OAUTH_REDIRECT_URI` in Vercel. Set `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET`, `MICROSOFT_OAUTH_REDIRECT_URI`, and `MICROSOFT_OAUTH_TENANT` there too. Use `common` for the Microsoft tenant when both personal Microsoft accounts and work accounts should be allowed. Copy the client IDs and secrets to the worker environment if background email send jobs are enabled.
 
 Run a staging build before production:
 
@@ -53,14 +62,14 @@ A detached upload only means the build is queued. Keep polling the newest deploy
 
 1. Confirm production validation rejects missing secrets and mock adapters.
 2. Sign in as a staging user and verify organization creation/RLS.
-3. Connect a sandbox Apollo account and list mailboxes.
+3. Connect a sandbox Apollo account for prospecting and connect a Gmail or Microsoft mailbox for sending.
 4. Use a low credit budget, one prospect, and a daily send cap of one.
 5. Complete discovery and verify the structured profile, sources, score, and draft.
 6. Edit the draft and confirm any earlier approval is invalid.
 7. Suppress the recipient and confirm send is blocked; revoke the suppression only for the controlled test.
-8. Approve once and confirm Apollo message ID, exact audit content, and a single send row.
-9. Pause/disconnect Apollo and confirm affected campaigns stop.
-10. Revoke Apollo from Integrations and confirm encrypted credentials are removed.
+8. Approve once and confirm the provider message reference, exact sender and content audit hashes, and a single send row.
+9. Confirm the message appears in the connected account’s Sent folder with the snapshotted signature and compliance footer.
+10. Disconnect each provider from Integrations and confirm encrypted credentials are removed.
 
 ## Health and rollback
 

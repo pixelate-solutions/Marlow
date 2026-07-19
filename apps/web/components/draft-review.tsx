@@ -47,14 +47,16 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
         text:
           payload.data?.message ??
           (action === "send"
-            ? "Apollo confirmed the email was sent exactly once."
+            ? "Your connected mailbox confirmed the email was sent exactly once."
             : "Changes saved."),
       });
+      return true;
     } catch (error) {
       setNotice({
         kind: "error",
         text: error instanceof Error ? error.message : "Request failed.",
       });
+      return false;
     } finally {
       setBusy(null);
     }
@@ -73,7 +75,7 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
       body: JSON.stringify({ instruction }),
     });
   const approve = async () => {
-    if (dirty) await save();
+    if (dirty && !(await save())) return;
     await request("send", `/api/drafts/${draft.id}/approve-and-send`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
@@ -227,9 +229,7 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
                   onChange={(event) => setBody(event.target.value)}
                 />
                 <div className="email-signature">{draft.signature}</div>
-                <div className="email-footer-preview">
-                  {draft.postalAddress} · Not relevant? Reply and I won’t follow up.
-                </div>
+                <div className="email-footer-preview">{draft.complianceFooter}</div>
               </div>
               <div className="email-editor__bottom">
                 <span>

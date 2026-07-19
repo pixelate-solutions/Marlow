@@ -159,6 +159,7 @@ export const approvalContextSchema = z.object({
 export type ApprovalContext = z.infer<typeof approvalContextSchema>;
 
 export const sendingSettingsSchema = z.object({
+  defaultMailboxId: z.string().trim().default(""),
   senderName: nonEmpty,
   senderTitle: z.string().default(""),
   postalAddress: nonEmpty,
@@ -181,6 +182,9 @@ export const apiErrorCodes = [
   "APOLLO_REAUTHORIZATION_REQUIRED",
   "APOLLO_CREDIT_BUDGET_REACHED",
   "APOLLO_PERMISSION_DENIED",
+  "MAILBOX_NOT_CONNECTED",
+  "MAILBOX_REAUTHORIZATION_REQUIRED",
+  "MAILBOX_PERMISSION_DENIED",
   "PROSPECT_SUPPRESSED",
   "APPROVAL_EXPIRED",
   "APPROVAL_MISMATCH",

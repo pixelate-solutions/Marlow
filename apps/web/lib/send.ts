@@ -1,9 +1,11 @@
 import { randomBytes } from "node:crypto";
+import { hashApprovedBody, hashContent } from "@marlow/agent";
+import { composeEmailContent } from "@marlow/email";
 import { AppError } from "@marlow/shared";
-import { hashContent } from "@marlow/agent";
 import { getApolloProvider } from "./apollo";
 import type { AuthContext } from "./auth";
 import { isDemoMode } from "./auth";
+import { getEmailProviderForMailbox } from "./mailboxes";
 import { createSupabaseAdminClient } from "./supabase/admin";
 import { createSupabaseServerClient } from "./supabase/server";
 
@@ -74,19 +76,40 @@ export async function approveAndSend(input: {
     };
   }
 
-  const apollo = await getApolloProvider(input.auth.organizationId);
-  let sendInvoked = false;
-  try {
+  const admin = createSupabaseAdminClient();
+  const { data: routingDraft, error: routingError } = await admin
+    .from("outreach_drafts")
+    .select("sending_provider")
+    .eq("id", input.draftId)
+    .eq("organization_id", input.auth.organizationId)
+    .single();
+  if (routingError)
+    throw new AppError("NOT_FOUND", "The draft could not be found for this workspace.", 404);
+  const direct =
+    routingDraft.sending_provider === "GMAIL" || routingDraft.sending_provider === "MICROSOFT"
+      ? await getEmailProviderForMailbox({
+          organizationId: input.auth.organizationId,
+          mailboxId: input.mailboxId,
+        })
+      : null;
+  const apollo = direct ? null : await getApolloProvider(input.auth.organizationId);
+  let providerMailboxLimit: number | null = direct?.dailyLimit ?? null;
+  if (apollo) {
     const mailboxes = await apollo.listMailboxes();
     const mailbox = mailboxes.find((candidate) => candidate.id === input.mailboxId);
     if (!mailbox || mailbox.status !== "available") {
+      await apollo.disconnect();
       throw new AppError(
         "APPROVAL_MISMATCH",
-        "The selected Apollo mailbox is no longer available.",
+        "The selected sending mailbox is no longer available.",
         409,
       );
     }
+    providerMailboxLimit = mailbox.dailyLimit ?? null;
+  }
 
+  let sendInvoked = false;
+  try {
     const supabase = await createSupabaseServerClient();
     const nonceHash = hashContent(randomBytes(32).toString("base64url"));
     const { data: reservation, error: reserveError } = await supabase.rpc("prepare_approved_send", {
@@ -97,15 +120,14 @@ export async function approveAndSend(input: {
       p_idempotency_key: input.idempotencyKey,
       p_nonce_hash: nonceHash,
       p_ttl_seconds: 300,
-      p_provider_mailbox_limit: mailbox.dailyLimit ?? null,
+      p_provider_mailbox_limit: providerMailboxLimit,
     });
     if (reserveError) throw rpcError(reserveError);
     const reserved = reservation as { sendId: string; status: string; duplicate: boolean };
-    const admin = createSupabaseAdminClient();
     const { data: send, error: loadError } = await admin
       .from("email_sends")
       .select(
-        "*,approvals(*),outreach_drafts(subject,body,recipient_email,sending_mailbox_id,status),campaigns(status)",
+        "*,approvals(*),outreach_drafts(subject,body,recipient_email,sending_mailbox_id,sending_provider,sender_email,sender_name,signature_html,signature_text,compliance_footer_text,status),campaigns(status)",
       )
       .eq("id", reserved.sendId)
       .eq("organization_id", input.auth.organizationId)
@@ -124,7 +146,7 @@ export async function approveAndSend(input: {
         externalMessageId: send.external_message_id,
         status: "SENT",
         duplicate: true,
-        message: "Duplicate send prevented; Apollo already confirmed this email.",
+        message: "Duplicate send prevented. The connected mailbox already confirmed this email.",
       };
     if (send.status === "SENDING")
       return {
@@ -152,13 +174,35 @@ export async function approveAndSend(input: {
       throw new AppError("APPROVAL_MISMATCH", "Campaign is not active.", 409);
     if (
       approval.subject_hash !== hashContent(draft.subject) ||
-      approval.body_hash !== hashContent(draft.body) ||
+      approval.body_hash !==
+        hashApprovedBody({
+          body: draft.body,
+          signatureText: draft.signature_text,
+          signatureHtml: draft.signature_html,
+          complianceFooterText: draft.compliance_footer_text,
+        }) ||
       approval.recipient_email.toLowerCase() !== draft.recipient_email.toLowerCase() ||
-      approval.sending_mailbox_id !== draft.sending_mailbox_id
+      approval.sending_mailbox_id !== draft.sending_mailbox_id ||
+      send.sending_provider !== draft.sending_provider ||
+      send.sender_email !== draft.sender_email ||
+      send.sender_name !== draft.sender_name ||
+      send.signature_html !== draft.signature_html ||
+      send.signature_text !== draft.signature_text ||
+      send.compliance_footer_text !== draft.compliance_footer_text
     )
       throw new AppError(
         "APPROVAL_MISMATCH",
-        "Draft, recipient, or mailbox changed after approval.",
+        "Draft, recipient, sender, or signature changed after approval.",
+        409,
+      );
+    if (
+      direct &&
+      (direct.mailbox.id !== send.sending_mailbox_id ||
+        direct.mailbox.email.toLowerCase() !== String(send.sender_email).toLowerCase())
+    )
+      throw new AppError(
+        "APPROVAL_MISMATCH",
+        "The connected sender no longer matches the approved email.",
         409,
       );
     const domain = String(send.recipient_email).split("@")[1] ?? "";
@@ -187,14 +231,31 @@ export async function approveAndSend(input: {
         duplicate: true,
         message: "This exact send is already in progress.",
       };
-    sendInvoked = true;
-    const result = await apollo.sendOneOffEmail({
-      mailboxId: send.sending_mailbox_id,
-      recipientEmail: send.recipient_email,
-      subject: send.subject,
+    const content = composeEmailContent({
       body: send.body,
-      idempotencyKey: send.idempotency_key,
+      signatureHtml: send.signature_html,
+      signatureText: send.signature_text,
+      complianceFooter: send.compliance_footer_text,
     });
+    sendInvoked = true;
+    const result = direct
+      ? await direct.provider.send({
+          mailboxEmail: send.sender_email,
+          displayName: send.sender_name || direct.mailbox.displayName,
+          ...(direct.mailbox.replyTo ? { replyTo: direct.mailbox.replyTo } : {}),
+          recipientEmail: send.recipient_email,
+          subject: send.subject,
+          textBody: content.text,
+          htmlBody: content.html,
+          idempotencyKey: send.idempotency_key,
+        })
+      : await apollo!.sendOneOffEmail({
+          mailboxId: send.sending_mailbox_id,
+          recipientEmail: send.recipient_email,
+          subject: send.subject,
+          body: content.text,
+          idempotencyKey: send.idempotency_key,
+        });
     const now = new Date().toISOString();
     const update = await admin
       .from("email_sends")
@@ -227,8 +288,10 @@ export async function approveAndSend(input: {
       immutable_data: {
         recipient: send.recipient_email,
         mailboxId: send.sending_mailbox_id,
+        provider: send.sending_provider,
+        senderEmail: send.sender_email,
         subject: send.subject,
-        body: send.body,
+        approvedBodyHash: approval.body_hash,
         externalMessageId: result.externalMessageId,
         idempotencyKey: send.idempotency_key,
       },
@@ -238,7 +301,7 @@ export async function approveAndSend(input: {
       externalMessageId: result.externalMessageId,
       status: "SENT",
       duplicate: reserved.duplicate,
-      message: "Apollo confirmed the email was sent exactly once.",
+      message: "The connected mailbox confirmed the email was sent exactly once.",
     };
   } catch (error) {
     if (!sendInvoked) throw error;
@@ -254,10 +317,10 @@ export async function approveAndSend(input: {
       .eq("status", "SENDING");
     throw new AppError(
       "WORKER_UNAVAILABLE",
-      "Apollo did not return a definitive result. The send is marked delivery-unknown and will not be retried automatically.",
+      "The email provider did not return a definitive result. The send is marked delivery unknown and will not be retried automatically.",
       503,
     );
   } finally {
-    await apollo.disconnect();
+    await apollo?.disconnect();
   }
 }

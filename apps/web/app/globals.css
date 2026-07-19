@@ -1862,6 +1862,7 @@ select:focus-visible {
   padding: 13px 20px;
   color: var(--faint);
   font-size: 9px;
+  white-space: pre-line;
   background: #fafbfa;
   border-top: 1px solid var(--line);
 }
@@ -1973,6 +1974,11 @@ select:focus-visible {
   border-color: #f2cfcc;
   background: var(--red-soft);
 }
+.status-banner--warning {
+  color: #7f5c27;
+  border-color: #efd8ab;
+  background: var(--amber-soft);
+}
 
 .integration-grid {
   display: grid;
@@ -1981,6 +1987,9 @@ select:focus-visible {
 }
 .integration-card {
   padding: 20px;
+}
+.integration-card--wide {
+  grid-column: 1 / -1;
 }
 .integration-card__top {
   display: flex;
@@ -1998,6 +2007,12 @@ select:focus-visible {
 }
 .integration-logo--meta {
   background: #2375e8;
+}
+.integration-logo--google {
+  background: #4285f4;
+}
+.integration-logo--microsoft {
+  background: #0078d4;
 }
 .integration-logo--web {
   background: var(--ink);
@@ -2029,6 +2044,77 @@ select:focus-visible {
 }
 .integration-detail strong {
   color: var(--ink-2);
+}
+.email-connection {
+  display: grid;
+  gap: 14px;
+}
+.email-connection > .status-banner {
+  margin-bottom: 0;
+}
+.mailbox-list {
+  display: grid;
+  gap: 12px;
+}
+.mailbox-item {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.mailbox-item__header,
+.mailbox-item__actions,
+.integration-actions,
+.mailbox-default-note {
+  display: flex;
+  align-items: center;
+}
+.mailbox-item__header {
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.mailbox-item__header > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+.mailbox-item__header strong {
+  font-size: 12px;
+}
+.mailbox-item__header span,
+.mailbox-default-note,
+.mailbox-empty {
+  color: var(--muted);
+  font-size: 10px;
+}
+.mailbox-item__badges,
+.mailbox-item__actions,
+.integration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mailbox-item__badges {
+  justify-content: flex-end;
+}
+.mailbox-item .field {
+  margin-bottom: 12px;
+}
+.mailbox-signature {
+  min-height: 105px;
+  background: var(--paper);
+}
+.mailbox-default-note {
+  gap: 5px;
+  padding: 0 6px;
+  color: var(--accent-dark);
+  font-weight: 700;
+}
+.mailbox-empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
 }
 
 .settings-layout {
@@ -2297,6 +2383,13 @@ select:focus-visible {
   .mobile-menu {
     display: inline-grid;
   }
+  .topbar__actions .button {
+    width: 40px;
+    padding: 0;
+  }
+  .topbar__actions .button span {
+    display: none;
+  }
   .page {
     padding: 23px 16px 40px;
   }
@@ -2331,6 +2424,16 @@ select:focus-visible {
   .campaign-grid,
   .integration-grid {
     grid-template-columns: 1fr;
+  }
+  .integration-card--wide {
+    grid-column: auto;
+  }
+  .mailbox-item__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .mailbox-item__badges {
+    justify-content: flex-start;
   }
   .campaigns-toolbar {
     align-items: stretch;
