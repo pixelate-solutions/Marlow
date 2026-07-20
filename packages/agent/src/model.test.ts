@@ -1,7 +1,12 @@
 import { campaignProfileSchema } from "@marlow/shared";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { parseStructuredModelOutput, toStrictModelJsonSchema } from "./model";
+import {
+  MuseSparkProvider,
+  parseStructuredModelOutput,
+  toStrictModelJsonSchema,
+  type ModelMessage,
+} from "./model";
 
 type JsonSchema = Record<string, unknown>;
 
@@ -80,5 +85,60 @@ describe("strict structured model output", () => {
     const jsonSchema = toStrictModelJsonSchema(discoverySchema);
     expectStrictObjects(jsonSchema);
     expect(parseStructuredModelOutput('{"profile":null}', discoverySchema)).toEqual({});
+  });
+
+  it("extracts a JSON object wrapped in model commentary", () => {
+    expect(
+      parseStructuredModelOutput(
+        'Thanks for the details. {"requiredText":"ready","nullableText":null,"defaultedTags":[],"nested":{},"rows":[]} Let us continue.',
+        schema,
+      ),
+    ).toEqual({
+      requiredText: "ready",
+      nullableText: null,
+      defaultedTags: [],
+      nested: {},
+      rows: [],
+    });
+  });
+
+  it("retries malformed structured output with an explicit JSON schema reminder", async () => {
+    const provider = new MuseSparkProvider({ apiKey: "test-key", maxRetries: 1 });
+    const requests: Array<{ messages: ModelMessage[] }> = [];
+    const fakeClient = {
+      chat: {
+        completions: {
+          create: async (request: { messages: ModelMessage[] }) => {
+            requests.push(request);
+            return {
+              choices: [
+                {
+                  message: {
+                    content:
+                      requests.length === 1
+                        ? "Thanks for the details. What should I ask next?"
+                        : '{"answer":"Recovered"}',
+                  },
+                },
+              ],
+              usage: { prompt_tokens: 10, completion_tokens: 4 },
+            };
+          },
+        },
+      },
+    };
+    (provider as unknown as { client: typeof fakeClient }).client = fakeClient;
+
+    const result = await provider.generateStructured({
+      messages: [{ role: "user", content: "Continue" }],
+      schema: z.object({ answer: z.string() }),
+      schemaName: "retry_test",
+    });
+
+    expect(result.value).toEqual({ answer: "Recovered" });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.messages.at(-1)?.content).toContain(
+      "Return only one valid JSON object",
+    );
   });
 });

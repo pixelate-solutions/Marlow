@@ -32,9 +32,57 @@ export class ModelUnavailableError extends Error {
   }
 }
 
+function balancedJsonAt(text: string, start: number): string | undefined {
+  const first = text[start];
+  if (first !== "{" && first !== "[") return undefined;
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === "{" || character === "[") {
+      stack.push(character);
+    } else if (character === "}" || character === "]") {
+      const expected = character === "}" ? "{" : "[";
+      if (stack.at(-1) !== expected) return undefined;
+      stack.pop();
+      if (stack.length === 0) return text.slice(start, index + 1);
+    }
+  }
+  return undefined;
+}
+
 function jsonFromText(text: string): unknown {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1];
-  return JSON.parse((fenced ?? text).trim()) as unknown;
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1]?.trim();
+  const candidates = [fenced, text.trim()];
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] !== "{" && text[index] !== "[") continue;
+    const candidate = balancedJsonAt(text, index);
+    if (candidate) candidates.push(candidate);
+  }
+  let lastError: unknown;
+  for (const candidate of new Set(candidates.filter((value): value is string => Boolean(value)))) {
+    try {
+      return JSON.parse(candidate) as unknown;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new SyntaxError("Structured response did not contain JSON.");
 }
 
 type JsonSchema = Record<string, unknown>;
@@ -263,18 +311,28 @@ export class MuseSparkProvider implements ModelProvider {
     temperature?: number;
   }): Promise<StructuredModelResult<T>> {
     let lastError: unknown;
+    let needsSchemaReminder = false;
+    const strictSchema = toStrictModelJsonSchema(input.schema);
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
       try {
         const response = await this.client.chat.completions.create({
           model: this.modelId,
-          messages: input.messages,
+          messages: needsSchemaReminder
+            ? [
+                ...input.messages,
+                {
+                  role: "system",
+                  content: `Your previous response did not match the required structure. Return only one valid JSON object with no markdown or commentary. The JSON must match this schema: ${JSON.stringify(strictSchema)}`,
+                },
+              ]
+            : input.messages,
           temperature: input.temperature ?? 0.2,
           response_format: {
             type: "json_schema",
             json_schema: {
               name: input.schemaName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64),
               strict: true,
-              schema: toStrictModelJsonSchema(input.schema),
+              schema: strictSchema,
             },
           },
         });
@@ -284,8 +342,15 @@ export class MuseSparkProvider implements ModelProvider {
             "Muse Spark returned an empty structured response.",
             true,
           );
+        let value: T;
+        try {
+          value = parseStructuredModelOutput(content, input.schema);
+        } catch {
+          needsSchemaReminder = true;
+          throw new ModelUnavailableError("Muse Spark returned invalid structured JSON.", true);
+        }
         return {
-          value: parseStructuredModelOutput(content, input.schema),
+          value,
           usage: {
             inputTokens: response.usage?.prompt_tokens ?? 0,
             outputTokens: response.usage?.completion_tokens ?? 0,
