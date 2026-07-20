@@ -10,6 +10,15 @@ test.describe("deterministic collaborative campaign", () => {
     await expect(page.getByLabel("Confirm password")).toBeVisible();
     await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
+
+    await page.goto("/sign-in?error=invalid-credentials");
+    await expect(page.getByRole("alert")).toContainText(
+      "That email and password combination did not work.",
+    );
+    await expect(page.getByRole("link", { name: "Reset your password" })).toHaveAttribute(
+      "href",
+      "/forgot-password",
+    );
   });
 
   test("moves from discovery through an exactly-once approved demo send", async ({

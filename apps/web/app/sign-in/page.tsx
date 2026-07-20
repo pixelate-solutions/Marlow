@@ -3,12 +3,26 @@ import Link from "next/link";
 
 export const metadata = { title: "Sign in" };
 
+const signInErrors: Record<string, { message: string; canReset?: boolean }> = {
+  "invalid-credentials": {
+    message: "That email and password combination did not work.",
+    canReset: true,
+  },
+  "email-not-confirmed": {
+    message: "Confirm your email address before signing in.",
+  },
+  "temporarily-unavailable": {
+    message: "Sign-in is temporarily unavailable. Please try again shortly.",
+  },
+};
+
 export default async function SignInPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+  const signInError = error ? signInErrors[error] : undefined;
   return (
     <main id="main-content" className="auth-page">
       <section className="auth-story">
@@ -39,8 +53,11 @@ export default async function SignInPage({
           <h2>Sign in to Marlow</h2>
           <p className="auth-form__intro">Continue building thoughtful outbound campaigns.</p>
           {error ? (
-            <div className="status-banner status-banner--error" role="alert">
-              {error}
+            <div className="status-banner status-banner--error auth-error" role="alert">
+              <span>{signInError?.message ?? error}</span>
+              {signInError?.canReset ? (
+                <Link href="/forgot-password">Reset your password</Link>
+              ) : null}
             </div>
           ) : null}
           <form action="/auth/sign-in" method="post">

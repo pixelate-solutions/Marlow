@@ -625,6 +625,17 @@ select:focus-visible {
   margin: 0 0 30px;
   color: var(--muted);
 }
+.auth-error {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 5px;
+}
+.auth-error a {
+  color: inherit;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .field {
   display: grid;
   gap: 7px;

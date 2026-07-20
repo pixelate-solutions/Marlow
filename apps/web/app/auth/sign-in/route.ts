@@ -11,21 +11,25 @@ export async function POST(request: Request) {
     const redirectTo = safeRedirectPath(String(form.get("redirectTo") ?? "/dashboard"));
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error)
+    if (error) {
+      console.warn("[auth] Password sign-in rejected", {
+        code: error.code ?? "unknown",
+        status: error.status ?? null,
+      });
+      const errorCode =
+        error.code === "email_not_confirmed" ? "email-not-confirmed" : "invalid-credentials";
       return NextResponse.redirect(
-        new URL(
-          `/sign-in?error=${encodeURIComponent("Email or password was not recognized.")}`,
-          request.url,
-        ),
+        new URL(`/sign-in?error=${errorCode}`, request.url),
         303,
       );
+    }
     return NextResponse.redirect(new URL(redirectTo, request.url), 303);
-  } catch {
+  } catch (error) {
+    console.error("[auth] Password sign-in could not run", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.redirect(
-      new URL(
-        `/sign-in?error=${encodeURIComponent("Authentication is not configured for this environment.")}`,
-        request.url,
-      ),
+      new URL("/sign-in?error=temporarily-unavailable", request.url),
       303,
     );
   }
