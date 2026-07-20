@@ -39,7 +39,8 @@ describe("DiscoveryAgent", () => {
     expect(result.ready).toBe(false);
     expect(result.profile).toBeUndefined();
     expect(provider.messages[1]?.content).toContain(
-      "When ready is false, set profile to null instead of generating a partial profile.",
+      "When ready is false, set profile to null instead of generating a partial profile",
     );
+    expect(provider.messages[1]?.content).toContain("No background work continues after your response.");
   });
 });

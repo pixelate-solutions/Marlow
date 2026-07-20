@@ -39,7 +39,7 @@ export class DiscoveryAgent {
           researchedCompanyFacts: input.researchedCompanyFacts ?? [],
           currentProfile: input.currentProfile ?? {},
           connectedMailbox: input.connectedMailbox ?? null,
-        })}. Ask exactly one useful question if not ready. Never repeat an answered question. When ready is false, set profile to null instead of generating a partial profile. If ready, return a complete validated campaign profile.`,
+        })}. Ask exactly one useful question if not ready. Never repeat an answered question. When ready is false, set profile to null instead of generating a partial profile, provide at least one missing required field and unresolved question, and make the assistant message the next concrete question. No background work continues after your response. Never claim that research, loading, or other work is still underway. If ready, return a complete validated campaign profile.`,
       },
       ...input.messages,
     ];

@@ -1,7 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { recoveryDiscoveryTurn } from "./discovery";
+import { discoveryTurnNeedsRecovery, recoveryDiscoveryTurn } from "./discovery";
 
 describe("discovery model recovery", () => {
+  it("replaces a status-only model response that would leave discovery stuck", () => {
+    expect(
+      discoveryTurnNeedsRecovery({
+        assistantMessage: "Researching example.com to avoid re-asking public info...",
+        ready: false,
+        missingRequiredFields: [],
+        unresolvedQuestions: [],
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps a non-ready turn that asks one actionable question", () => {
+    expect(
+      discoveryTurnNeedsRecovery({
+        assistantMessage: "What daily sending limit should I enforce?",
+        ready: false,
+        missingRequiredFields: ["limits.dailySendLimit"],
+        unresolvedQuestions: ["What daily sending limit should I enforce?"],
+      }),
+    ).toBe(false);
+  });
+
   it("continues with the next unanswered question after a transient model failure", () => {
     const turn = recoveryDiscoveryTurn([
       {

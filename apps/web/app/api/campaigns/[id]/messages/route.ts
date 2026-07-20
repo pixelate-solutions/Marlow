@@ -3,7 +3,11 @@ import { AppError, sendingSettingsSchema } from "@marlow/shared";
 import { z } from "zod";
 import { apiError, apiOk } from "@/lib/api";
 import { isDemoMode, requireAuth } from "@/lib/auth";
-import { recoveryDiscoveryTurn, runDiscovery } from "@/lib/discovery";
+import {
+  discoveryTurnNeedsRecovery,
+  recoveryDiscoveryTurn,
+  runDiscovery,
+} from "@/lib/discovery";
 import { shouldStoreDiscoveryAnswer, type DiscoveryHistoryMessage } from "@/lib/discovery-messages";
 import { getDefaultSendingMailbox } from "@/lib/mailboxes";
 import { assertCsrf } from "@/lib/security";
@@ -108,6 +112,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         }
       : undefined;
     let recoveredFromModelFailure = false;
+    let recoveredFromInvalidTurn = false;
     const modelStartedAt = Date.now();
     let modelTurn: Awaited<ReturnType<typeof runDiscovery>>;
     try {
@@ -127,6 +132,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           }),
         );
       }
+    }
+    if (discoveryTurnNeedsRecovery(modelTurn)) {
+      recoveredFromInvalidTurn = true;
+      if (process.env.NODE_ENV !== "test") {
+        console.warn(
+          JSON.stringify({
+            level: "warning",
+            message: "Campaign discovery replaced an invalid model turn",
+            campaignId: id,
+            missingFieldCount: modelTurn.missingRequiredFields.length,
+            unresolvedQuestionCount: modelTurn.unresolvedQuestions.length,
+            assistantMessageContainedQuestion: modelTurn.assistantMessage.includes("?"),
+          }),
+        );
+      }
+      modelTurn = recoveryDiscoveryTurn(history);
     }
     const profile =
       modelTurn.profile && connectedMailbox
@@ -181,6 +202,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         missingRequiredFields: turn.missingRequiredFields,
         unresolvedQuestions: turn.unresolvedQuestions,
         recoveredFromModelFailure,
+        recoveredFromInvalidTurn,
       },
     });
     if (assistantMessageResult.error) throw new Error(assistantMessageResult.error.message);

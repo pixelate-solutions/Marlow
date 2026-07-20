@@ -4,6 +4,15 @@ import { DiscoveryAgent, MuseSparkProvider, type DiscoveryTurn } from "@marlow/a
 
 type DiscoveryMessage = { role: "user" | "assistant"; content: string };
 
+export function discoveryTurnNeedsRecovery(turn: DiscoveryTurn): boolean {
+  if (turn.ready) return false;
+  return (
+    turn.missingRequiredFields.length === 0 ||
+    turn.unresolvedQuestions.length === 0 ||
+    !turn.assistantMessage.includes("?")
+  );
+}
+
 export function recoveryDiscoveryTurn(messages: DiscoveryMessage[]): DiscoveryTurn {
   const userContext = messages
     .filter((message) => message.role === "user")
