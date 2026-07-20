@@ -276,6 +276,7 @@ export function parseStructuredModelOutput<T>(text: string, schema: ZodType<T>):
 }
 
 function isTransient(error: unknown): boolean {
+  if (error instanceof OpenAI.APIConnectionError) return true;
   if (error instanceof OpenAI.APIError)
     return (
       error.status === 408 || error.status === 409 || error.status === 429 || error.status >= 500
@@ -292,12 +293,17 @@ export class MuseSparkProvider implements ModelProvider {
   readonly modelId = MODEL.id;
   private readonly client: OpenAI;
 
-  constructor(options: { apiKey: string; baseUrl?: string; maxRetries?: number }) {
+  constructor(options: {
+    apiKey: string;
+    baseUrl?: string;
+    maxRetries?: number;
+    timeoutMs?: number;
+  }) {
     this.client = new OpenAI({
       apiKey: options.apiKey,
       baseURL: options.baseUrl ?? MODEL.baseUrl,
       maxRetries: 0,
-      timeout: 60_000,
+      timeout: options.timeoutMs ?? 60_000,
     });
     this.maxRetries = options.maxRetries ?? 2;
   }

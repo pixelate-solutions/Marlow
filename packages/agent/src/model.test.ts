@@ -1,3 +1,4 @@
+import OpenAI from "openai";
 import { campaignProfileSchema } from "@marlow/shared";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -137,8 +138,35 @@ describe("strict structured model output", () => {
 
     expect(result.value).toEqual({ answer: "Recovered" });
     expect(requests).toHaveLength(2);
-    expect(requests[1]?.messages.at(-1)?.content).toContain(
-      "Return only one valid JSON object",
-    );
+    expect(requests[1]?.messages.at(-1)?.content).toContain("Return only one valid JSON object");
+  });
+
+  it("retries provider connection timeouts", async () => {
+    const provider = new MuseSparkProvider({ apiKey: "test-key", maxRetries: 1 });
+    let attempts = 0;
+    const fakeClient = {
+      chat: {
+        completions: {
+          create: async () => {
+            attempts += 1;
+            if (attempts === 1) throw new OpenAI.APIConnectionTimeoutError();
+            return {
+              choices: [{ message: { content: '{"answer":"Recovered after timeout"}' } }],
+              usage: { prompt_tokens: 10, completion_tokens: 4 },
+            };
+          },
+        },
+      },
+    };
+    (provider as unknown as { client: typeof fakeClient }).client = fakeClient;
+
+    const result = await provider.generateStructured({
+      messages: [{ role: "user", content: "Continue" }],
+      schema: z.object({ answer: z.string() }),
+      schemaName: "timeout_retry_test",
+    });
+
+    expect(attempts).toBe(2);
+    expect(result.value.answer).toBe("Recovered after timeout");
   });
 });

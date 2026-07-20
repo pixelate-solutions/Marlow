@@ -3,13 +3,15 @@ import { AppError, sendingSettingsSchema } from "@marlow/shared";
 import { z } from "zod";
 import { apiError, apiOk } from "@/lib/api";
 import { isDemoMode, requireAuth } from "@/lib/auth";
-import { runDiscovery } from "@/lib/discovery";
+import { recoveryDiscoveryTurn, runDiscovery } from "@/lib/discovery";
 import { shouldStoreDiscoveryAnswer, type DiscoveryHistoryMessage } from "@/lib/discovery-messages";
 import { getDefaultSendingMailbox } from "@/lib/mailboxes";
 import { assertCsrf } from "@/lib/security";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const messageSchema = z.object({ content: z.string().trim().min(1).max(10_000) });
+
+export const maxDuration = 90;
 
 function demoTurn(content: string) {
   const lower = content.toLowerCase();
@@ -105,7 +107,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             : {}),
         }
       : undefined;
-    const modelTurn = await runDiscovery(history, connectedMailbox);
+    let recoveredFromModelFailure = false;
+    let modelTurn: Awaited<ReturnType<typeof runDiscovery>>;
+    try {
+      modelTurn = await runDiscovery(history, connectedMailbox);
+    } catch (modelError) {
+      if (!(modelError instanceof ModelUnavailableError) || !modelError.retryable) throw modelError;
+      recoveredFromModelFailure = true;
+      modelTurn = recoveryDiscoveryTurn(history);
+      if (process.env.NODE_ENV !== "test") {
+        console.warn(
+          JSON.stringify({
+            level: "warning",
+            message: "Campaign discovery recovered from a transient model failure",
+            error: modelError.message,
+            campaignId: id,
+          }),
+        );
+      }
+    }
     const profile =
       modelTurn.profile && connectedMailbox
         ? {
@@ -158,6 +178,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         readinessScore,
         missingRequiredFields: turn.missingRequiredFields,
         unresolvedQuestions: turn.unresolvedQuestions,
+        recoveredFromModelFailure,
       },
     });
     if (assistantMessageResult.error) throw new Error(assistantMessageResult.error.message);
