@@ -39,7 +39,7 @@ export class DiscoveryAgent {
           researchedCompanyFacts: input.researchedCompanyFacts ?? [],
           currentProfile: input.currentProfile ?? {},
           connectedMailbox: input.connectedMailbox ?? null,
-        })}. Ask exactly one useful question if not ready. Never repeat an answered question. If ready, return a complete validated campaign profile.`,
+        })}. Ask exactly one useful question if not ready. Never repeat an answered question. When ready is false, set profile to null instead of generating a partial profile. If ready, return a complete validated campaign profile.`,
       },
       ...input.messages,
     ];

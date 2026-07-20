@@ -11,7 +11,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const messageSchema = z.object({ content: z.string().trim().min(1).max(10_000) });
 
-export const maxDuration = 90;
+export const maxDuration = 120;
 
 function demoTurn(content: string) {
   const lower = content.toLowerCase();
@@ -108,6 +108,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         }
       : undefined;
     let recoveredFromModelFailure = false;
+    const modelStartedAt = Date.now();
     let modelTurn: Awaited<ReturnType<typeof runDiscovery>>;
     try {
       modelTurn = await runDiscovery(history, connectedMailbox);
@@ -122,6 +123,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             message: "Campaign discovery recovered from a transient model failure",
             error: modelError.message,
             campaignId: id,
+            elapsedMs: Date.now() - modelStartedAt,
           }),
         );
       }

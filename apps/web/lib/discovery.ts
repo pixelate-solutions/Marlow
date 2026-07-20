@@ -87,7 +87,7 @@ export async function runDiscovery(
   const provider = new MuseSparkProvider({
     apiKey,
     maxRetries: 1,
-    timeoutMs: 30_000,
+    timeoutMs: 45_000,
     ...(process.env.META_MODEL_API_BASE_URL
       ? { baseUrl: process.env.META_MODEL_API_BASE_URL }
       : {}),
