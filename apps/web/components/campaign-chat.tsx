@@ -2,14 +2,20 @@
 
 import { CheckCircle2, CircleDashed, Play, Send, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 export type CampaignChatMessage = {
   role: "assistant" | "user";
   content: string;
-  kind?: "error";
+  kind?: "error" | "streaming";
   retryContent?: string;
 };
+
+const streamIntervalMs = 24;
+
+function responseChunks(content: string): string[] {
+  return content.match(/\S+\s*/g) ?? [content];
+}
 
 const openingMessage: CampaignChatMessage = {
   role: "assistant",
@@ -36,17 +42,59 @@ export function CampaignChat({
   const [messages, setMessages] = useState<CampaignChatMessage[]>(startingMessages);
   const [value, setValue] = useState(unansweredMessage ?? "");
   const [loading, setLoading] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [progress, setProgress] = useState(initialProgress);
   const [campaignId, setCampaignId] = useState<string | null>(initialCampaignId);
   const [pendingAnswer, setPendingAnswer] = useState<string | null>(unansweredMessage);
   const [ready, setReady] = useState(initialReady);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const messageEndRef = useRef<HTMLDivElement>(null);
+  const busy = loading || streaming;
+
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView?.({ behavior: streaming ? "auto" : "smooth" });
+  }, [loading, messages, streaming]);
+
+  async function revealAssistantMessage(content: string) {
+    const chunks = responseChunks(content);
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (reduceMotion || chunks.length <= 1) {
+      setMessages((current) => [...current, { role: "assistant", content }]);
+      return;
+    }
+
+    setLoading(false);
+    setStreaming(true);
+    setMessages((current) => [...current, { role: "assistant", content: "", kind: "streaming" }]);
+    let revealed = "";
+    for (const chunk of chunks) {
+      await new Promise((resolve) => window.setTimeout(resolve, streamIntervalMs));
+      revealed += chunk;
+      setMessages((current) => {
+        const next = [...current];
+        const last = next[next.length - 1];
+        if (last?.role === "assistant" && last.kind === "streaming") {
+          next[next.length - 1] = { ...last, content: revealed };
+        }
+        return next;
+      });
+    }
+    setMessages((current) => {
+      const next = [...current];
+      const last = next[next.length - 1];
+      if (last?.role === "assistant" && last.kind === "streaming") {
+        next[next.length - 1] = { role: "assistant", content };
+      }
+      return next;
+    });
+    setStreaming(false);
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const content = value.trim();
-    if (!content || loading) return;
+    if (!content || busy) return;
     const lastMessage = messages[messages.length - 1];
     const retryingFailedTurn =
       lastMessage?.kind === "error" && lastMessage.retryContent === content;
@@ -99,14 +147,8 @@ export function CampaignChat({
       const data = payload.data;
       if (data.id) setCampaignId(data.id);
       setPendingAnswer(null);
+      await revealAssistantMessage(data.assistantMessage);
       setReady(Boolean(data.ready));
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content: data.assistantMessage,
-        },
-      ]);
       setProgress(data.readinessScore);
     } catch {
       setValue(content);
@@ -160,22 +202,46 @@ export function CampaignChat({
             <span>
               {loading
                 ? "Thinking about the next useful question…"
-                : "Marlow asks one question at a time"}
+                : streaming
+                  ? "Writing the response…"
+                  : "Marlow asks one question at a time"}
             </span>
           </div>
         </header>
-        <div className="chat-messages" aria-live="polite">
+        <div className="chat-messages" aria-live="polite" aria-busy={busy}>
           {messages.map((message, index) => (
             <div className={`message message--${message.role}`} key={`${message.role}-${index}`}>
               <span className={`avatar avatar--${message.role === "user" ? "blue" : "teal"}`}>
                 {message.role === "user" ? "AM" : "M"}
               </span>
               <div>
-                <div className="message__bubble">{message.content}</div>
+                <div
+                  className={`message__bubble${message.kind === "streaming" ? " message__bubble--streaming" : ""}`}
+                  data-testid={message.kind === "streaming" ? "streaming-response" : undefined}
+                >
+                  {message.content}
+                </div>
                 <time>{index === 0 ? "Now" : "Just now"}</time>
               </div>
             </div>
           ))}
+          {loading ? (
+            <div className="message message--assistant message--thinking" role="status">
+              <span className="avatar avatar--teal">M</span>
+              <div>
+                <div className="message__bubble message__bubble--thinking">
+                  <span>Thinking</span>
+                  <span className="thinking-dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </div>
+                <time>Now</time>
+              </div>
+            </div>
+          ) : null}
+          <div ref={messageEndRef} />
         </div>
         {ready ? (
           <div className="campaign-ready-actions">
@@ -210,11 +276,12 @@ export function CampaignChat({
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 onKeyDown={handleComposerKeyDown}
+                disabled={busy}
                 aria-label="Answer Marlow"
                 placeholder="Describe your offer and ideal customer…"
                 rows={2}
               />
-              <button type="submit" aria-label="Send answer" disabled={loading || !value.trim()}>
+              <button type="submit" aria-label="Send answer" disabled={busy || !value.trim()}>
                 <Send size={16} />
               </button>
             </div>

@@ -1472,6 +1472,63 @@ select:focus-visible {
   border-radius: 15px 5px 15px 15px;
   background: var(--accent-dark);
 }
+.message__bubble--thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 102px;
+  color: var(--muted);
+}
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.thinking-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-dark);
+  animation: thinking-dot 1s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) {
+  animation-delay: 140ms;
+}
+.thinking-dots span:nth-child(3) {
+  animation-delay: 280ms;
+}
+.message__bubble--streaming::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 3px;
+  vertical-align: -0.12em;
+  border-radius: 2px;
+  background: var(--accent-dark);
+  animation: streaming-cursor 700ms ease-in-out infinite;
+}
+@keyframes thinking-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+@keyframes streaming-cursor {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
 .message time {
   display: block;
   margin-top: 5px;

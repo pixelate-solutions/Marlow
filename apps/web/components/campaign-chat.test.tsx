@@ -105,6 +105,47 @@ describe("campaign discovery chat", () => {
     );
   });
 
+  it("shows thinking and progressively reveals the completed response", async () => {
+    let resolveFetch!: (response: Response) => void;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const reply =
+      "Thanks, that gives me a clear picture of the audience. Which locations should Marlow prioritize for this campaign?";
+
+    render(
+      <CampaignChat
+        initialCampaignId="campaign-4"
+        initialMessages={[{ role: "assistant", content: "Who should this campaign reach?" }]}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Answer Marlow"), {
+      target: { value: "Operations leaders at equipment companies" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send answer" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Thinking");
+    expect(screen.getByLabelText("Answer Marlow")).toBeDisabled();
+
+    resolveFetch(
+      new Response(
+        JSON.stringify({
+          data: { assistantMessage: reply, readinessScore: 54, ready: false },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const streamed = await screen.findByTestId("streaming-response");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(streamed).not.toHaveTextContent(reply);
+    expect(await screen.findByText(reply, {}, { timeout: 2_000 })).toBeVisible();
+    expect(screen.getByLabelText("Answer Marlow")).toBeEnabled();
+  });
+
   it("starts prospecting after discovery is complete", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ data: { status: "QUEUED" } }), {
