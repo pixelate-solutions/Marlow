@@ -3,6 +3,7 @@
 import { CheckCircle2, CircleDashed, Play, Send, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { ChatMarkdown } from "./chat-markdown";
 
 export type CampaignChatMessage = {
   role: "assistant" | "user";
@@ -219,7 +220,11 @@ export function CampaignChat({
                   className={`message__bubble${message.kind === "streaming" ? " message__bubble--streaming" : ""}`}
                   data-testid={message.kind === "streaming" ? "streaming-response" : undefined}
                 >
-                  {message.content}
+                  {message.role === "assistant" ? (
+                    <ChatMarkdown content={message.content} />
+                  ) : (
+                    message.content
+                  )}
                 </div>
                 <time>{index === 0 ? "Now" : "Just now"}</time>
               </div>

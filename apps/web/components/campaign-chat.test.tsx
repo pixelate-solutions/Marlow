@@ -146,6 +146,33 @@ describe("campaign discovery chat", () => {
     expect(screen.getByLabelText("Answer Marlow")).toBeEnabled();
   });
 
+  it("formats assistant Markdown while keeping user messages as plain text", () => {
+    render(
+      <CampaignChat
+        initialMessages={[
+          {
+            role: "assistant",
+            content:
+              "## Recommended audience\n\n- **Operations leaders**\n- IT directors\n\n[View source](https://example.com/research)",
+          },
+          { role: "user", content: "Keep **my text** literal" },
+          { role: "assistant", content: "Use `verified facts` only." },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Recommended audience", level: 2 })).toBeVisible();
+    expect(screen.getByText("Operations leaders").tagName).toBe("STRONG");
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "View source" })).toHaveAttribute(
+      "href",
+      "https://example.com/research",
+    );
+    expect(screen.getByRole("link", { name: "View source" })).toHaveAttribute("target", "_blank");
+    expect(screen.getByText("Keep **my text** literal")).toBeVisible();
+    expect(screen.getByText("verified facts").tagName).toBe("CODE");
+  });
+
   it("starts prospecting after discovery is complete", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ data: { status: "QUEUED" } }), {
