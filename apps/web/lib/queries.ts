@@ -91,9 +91,17 @@ export async function getCampaignDiscovery(id: string) {
         },
       ],
       readinessScore: 18,
+      missingRequiredFields: [],
+      unresolvedQuestions: [],
     };
   const auth = await getAuthContext();
-  if (!auth) return { messages: [], readinessScore: 18 };
+  if (!auth)
+    return {
+      messages: [],
+      readinessScore: 18,
+      missingRequiredFields: [],
+      unresolvedQuestions: [],
+    };
   const supabase = await createSupabaseServerClient();
   const [messageResult, profileResult] = await Promise.all([
     supabase
@@ -117,23 +125,68 @@ export async function getCampaignDiscovery(id: string) {
     .reverse()
     .map((row) => row.structured_data)
     .find((value) => value && typeof value === "object") as
-    { readinessScore?: unknown } | undefined;
+    | {
+        readinessScore?: unknown;
+        missingRequiredFields?: unknown;
+        unresolvedQuestions?: unknown;
+      }
+    | undefined;
   const savedScore = Number(latestStructured?.readinessScore);
+  const missingRequiredFields = Array.isArray(latestStructured?.missingRequiredFields)
+    ? latestStructured.missingRequiredFields.filter(
+        (field): field is string => typeof field === "string",
+      )
+    : [];
+  const unresolvedQuestions = Array.isArray(latestStructured?.unresolvedQuestions)
+    ? latestStructured.unresolvedQuestions.filter(
+        (question): question is string => typeof question === "string",
+      )
+    : [];
   const answerCount = rows.filter((row) => row.role === "user").length;
   const estimatedScore = Math.min(82, 18 + answerCount * 12);
   return {
-    messages: rows.map((row) => ({
-      role: row.role as "user" | "assistant",
-      content: row.content,
-      activity: readDiscoveryActivities(
+    messages: rows.map((row) => {
+      const structured =
         row.structured_data && typeof row.structured_data === "object"
-          ? (row.structured_data as Record<string, unknown>).publicActivity
-          : undefined,
-      ),
-    })),
+          ? (row.structured_data as Record<string, unknown>)
+          : null;
+      const rowMissing = Array.isArray(structured?.missingRequiredFields)
+        ? structured.missingRequiredFields.filter(
+            (field): field is string => typeof field === "string",
+          )
+        : [];
+      const rowScore = Number(structured?.readinessScore);
+      const rowReadinessLabel = Number.isFinite(rowScore) ? `${rowScore}%` : "almost";
+      const readinessMismatch =
+        row.role === "assistant" &&
+        structured?.ready === false &&
+        rowMissing.length > 0 &&
+        /profile complete|ready to build/i.test(row.content);
+      const content = readinessMismatch
+        ? rowMissing.includes("sender.postalAddress")
+          ? `Your campaign profile is ${rowReadinessLabel} complete. Add a valid postal address in **Settings, then Sending**, then select **Recheck readiness** below.`
+          : `Your campaign still has ${rowMissing.length} required item${rowMissing.length === 1 ? "" : "s"} before prospecting can start.`
+        : row.content;
+      const activity = readDiscoveryActivities(structured?.publicActivity).map((item) =>
+        readinessMismatch && item.kind === "validation"
+          ? {
+              ...item,
+              detail: `Readiness is ${rowReadinessLabel}. Required items still remaining: ${rowMissing.length}.`,
+              status: "warning" as const,
+            }
+          : item,
+      );
+      return {
+        role: row.role as "user" | "assistant",
+        content,
+        activity,
+      };
+    }),
     readinessScore:
       profileResult.data?.readiness_score ??
       (Number.isFinite(savedScore) ? savedScore : estimatedScore),
+    missingRequiredFields,
+    unresolvedQuestions,
   };
 }
 

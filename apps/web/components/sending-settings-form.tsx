@@ -1,6 +1,7 @@
 "use client";
 
 import { Save } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button } from "@marlow/ui";
 import type { demoSendingSettings } from "@/lib/demo-data";
@@ -18,10 +19,13 @@ type MailboxOption = {
 export function SendingSettingsForm({
   settings,
   mailboxes,
+  returnTo = null,
 }: {
   settings: typeof demoSendingSettings;
   mailboxes: MailboxOption[];
+  returnTo?: string | null;
 }) {
+  const router = useRouter();
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -56,6 +60,10 @@ export function SendingSettingsForm({
         : (result.error?.message ?? "Could not save settings."),
     );
     setSaving(false);
+    if (response.ok && returnTo) {
+      router.push(returnTo);
+      router.refresh();
+    }
   }
   return (
     <form className="card settings-card" onSubmit={save}>
@@ -239,7 +247,7 @@ export function SendingSettingsForm({
       <div className="settings-actions">
         <Button type="submit" disabled={saving}>
           <Save size={14} />
-          {saving ? "Saving..." : "Save settings"}
+          {saving ? "Saving..." : returnTo ? "Save and return" : "Save settings"}
         </Button>
       </div>
     </form>

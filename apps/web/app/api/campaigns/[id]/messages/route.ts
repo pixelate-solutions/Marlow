@@ -283,17 +283,6 @@ async function processCampaignMessage(request: Request, id: string, emit?: Activ
       detail: "Selected the next unanswered required field.",
       status: "complete",
     });
-  } else {
-    publish({
-      id: "validation",
-      kind: "validation",
-      label: "Response validator",
-      detail: modelTurn.ready
-        ? "The campaign profile is complete and valid."
-        : `Required details still remaining: ${modelTurn.missingRequiredFields.length}.`,
-      status: "complete",
-      durationMs: Date.now() - validationStartedAt,
-    });
   }
   const profile =
     modelTurn.profile && connectedMailbox
@@ -310,32 +299,61 @@ async function processCampaignMessage(request: Request, id: string, emit?: Activ
         }
       : modelTurn.profile;
   const readiness = profile ? calculateReadiness(profile) : null;
+  const missingRequiredFields = [
+    ...new Set([
+      ...(readiness?.missingRequiredFields ?? modelTurn.missingRequiredFields),
+      ...(!connectedMailbox ? ["sender.sendingMailboxId"] : []),
+    ]),
+  ];
+  const unresolvedQuestions = [
+    ...new Set([
+      ...(readiness?.unresolvedQuestions ?? modelTurn.unresolvedQuestions),
+      ...(!connectedMailbox
+        ? ["Connect a Gmail or Microsoft mailbox and choose a default sender."]
+        : []),
+    ]),
+  ];
+  const ready = Boolean(modelTurn.ready && profile && readiness?.ready && connectedMailbox);
+  const readinessScore = readiness?.score ?? Math.max(0, 100 - missingRequiredFields.length * 7);
+  let assistantMessage = modelTurn.assistantMessage;
+  if (ready) {
+    assistantMessage =
+      "Your campaign profile is complete. Select **Start prospecting** below to build the review queue.";
+  } else if (!connectedMailbox) {
+    assistantMessage =
+      "Your campaign details are ready. Connect Gmail or Microsoft and choose a default sender before starting.";
+  } else if (modelTurn.ready && missingRequiredFields.includes("sender.postalAddress")) {
+    assistantMessage = `Your campaign profile is ${readinessScore}% complete. Add a valid postal address in **Settings, then Sending**, then select **Recheck readiness** below.`;
+  } else if (modelTurn.ready && unresolvedQuestions[0]) {
+    assistantMessage = `Your campaign profile is ${readinessScore}% complete. One required detail remains: ${unresolvedQuestions[0]}`;
+  }
   const turn = {
     ...modelTurn,
-    assistantMessage:
-      modelTurn.ready && !connectedMailbox
-        ? "Your campaign details are ready. Connect Gmail or Microsoft and choose a default sender before starting."
-        : modelTurn.assistantMessage,
+    assistantMessage,
     profile: profile
       ? {
           ...profile,
           readiness: readiness ?? profile.readiness,
         }
       : undefined,
-    ready: Boolean(modelTurn.ready && profile && readiness?.ready && connectedMailbox),
-    missingRequiredFields: [
-      ...(readiness?.missingRequiredFields ?? modelTurn.missingRequiredFields),
-      ...(!connectedMailbox ? ["sender.sendingMailboxId"] : []),
-    ],
-    unresolvedQuestions: [
-      ...(readiness?.unresolvedQuestions ?? modelTurn.unresolvedQuestions),
-      ...(!connectedMailbox
-        ? ["Connect a Gmail or Microsoft mailbox and choose a default sender."]
-        : []),
-    ],
+    ready,
+    missingRequiredFields,
+    unresolvedQuestions,
   };
-  const readinessScore =
-    turn.profile?.readiness.score ?? Math.max(0, 100 - turn.missingRequiredFields.length * 7);
+  if (!recoveredFromInvalidTurn) {
+    publish({
+      id: "validation",
+      kind: "validation",
+      label: "Response validator",
+      detail: ready
+        ? "The campaign profile is complete and ready to start."
+        : modelTurn.ready
+          ? `Readiness is ${readinessScore}%. Required items still remaining: ${missingRequiredFields.length}.`
+          : `Required details still remaining: ${missingRequiredFields.length}.`,
+      status: modelTurn.ready && !ready ? "warning" : "complete",
+      durationMs: Date.now() - validationStartedAt,
+    });
+  }
   const saveStartedAt = Date.now();
   publish({
     id: "save",
@@ -365,7 +383,7 @@ async function processCampaignMessage(request: Request, id: string, emit?: Activ
     .select("id")
     .single();
   if (assistantMessageResult.error) throw new Error(assistantMessageResult.error.message);
-  if (turn.ready && turn.profile) {
+  if (turn.profile) {
     await supabase
       .from("campaign_profiles")
       .update({ is_current: false })
@@ -387,10 +405,12 @@ async function processCampaignMessage(request: Request, id: string, emit?: Activ
       daily_send_limit: turn.profile.limits.dailySendLimit,
       apollo_credit_budget: turn.profile.limits.apolloCreditBudget,
     });
-    await supabase
-      .from("campaigns")
-      .update({ status: "READY", objective: turn.profile.campaignObjective })
-      .eq("id", id);
+    if (turn.ready) {
+      await supabase
+        .from("campaigns")
+        .update({ status: "READY", objective: turn.profile.campaignObjective })
+        .eq("id", id);
+    }
   }
   publish({
     id: "save",
@@ -418,6 +438,8 @@ async function processCampaignMessage(request: Request, id: string, emit?: Activ
     assistantMessage: turn.assistantMessage,
     readinessScore,
     ready: turn.ready,
+    missingRequiredFields: turn.missingRequiredFields,
+    unresolvedQuestions: turn.unresolvedQuestions,
     activity: activities,
   };
 }

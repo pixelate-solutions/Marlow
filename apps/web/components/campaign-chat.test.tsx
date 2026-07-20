@@ -261,4 +261,60 @@ describe("campaign discovery chat", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start prospecting" }));
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/campaigns/campaign-2"));
   });
+
+  it("explains a missing postal address and rechecks readiness", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            assistantMessage:
+              "Your campaign profile is complete. Select Start prospecting below to build the review queue.",
+            readinessScore: 100,
+            ready: true,
+            missingRequiredFields: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    render(
+      <CampaignChat
+        initialCampaignId="campaign-blocked"
+        initialMessages={[
+          {
+            role: "assistant",
+            content: "Your campaign profile is 94% complete.",
+          },
+        ]}
+        initialProgress={94}
+        initialMissingRequiredFields={["sender.postalAddress"]}
+      />,
+    );
+
+    expect(screen.getByText("Add a postal address to continue")).toBeVisible();
+    expect(screen.getByText("1 requirement remaining")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Complete sending setup" })).toHaveAttribute(
+      "href",
+      "/settings/sending?returnTo=%2Fcampaigns%2Fcampaign-blocked",
+    );
+    expect(screen.getByText("Sending guardrails").closest(".profile-check")).toHaveClass(
+      "profile-check--missing",
+    );
+    expect(screen.getByText("Target personas").closest(".profile-check")).not.toHaveClass(
+      "profile-check--missing",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Recheck readiness" }));
+
+    expect(await screen.findByRole("button", { name: "Start prospecting" })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/campaigns/campaign-blocked/messages",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "I updated the sending settings. Please recheck campaign readiness.",
+        }),
+      }),
+    );
+  });
 });

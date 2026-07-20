@@ -14,14 +14,25 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   if (["DISCOVERING", "READY"].includes(campaign.status)) {
     const discovery = await getCampaignDiscovery(id);
     const ready = campaign.status === "READY";
+    const sendingSetupRequired = discovery.missingRequiredFields.some((field) =>
+      ["sender.postalAddress", "sender.sendingMailboxId"].includes(field),
+    );
     return (
       <div className="page page--narrow">
         <PageHeader
-          title={ready ? "Campaign ready to start" : "Continue campaign discovery"}
+          title={
+            ready
+              ? "Campaign ready to start"
+              : sendingSetupRequired
+                ? "Complete sending setup"
+                : "Continue campaign discovery"
+          }
           description={
             ready
               ? "Review the completed profile, then start prospecting when you are ready."
-              : "Pick up where you left off. Your saved answers are already here."
+              : sendingSetupRequired
+                ? "Finish the required sender details, then recheck readiness and start prospecting."
+                : "Pick up where you left off. Your saved answers are already here."
           }
           actions={<CampaignDeleteButton campaignId={id} campaignName={campaign.name} />}
         />
@@ -30,6 +41,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           initialMessages={discovery.messages}
           initialProgress={discovery.readinessScore}
           initialReady={ready}
+          initialMissingRequiredFields={discovery.missingRequiredFields}
         />
       </div>
     );

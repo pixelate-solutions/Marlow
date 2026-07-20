@@ -1767,6 +1767,35 @@ select:focus-visible {
   font-size: 10px;
   font-weight: 650;
 }
+.campaign-readiness-blocker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-top: 1px solid #e9cf9f;
+  background: var(--amber-soft);
+}
+.campaign-readiness-blocker strong,
+.campaign-readiness-blocker span {
+  display: block;
+}
+.campaign-readiness-blocker strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+.campaign-readiness-blocker span {
+  max-width: 430px;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.campaign-readiness-blocker__actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
 .chat-compose__box {
   display: flex;
   align-items: flex-end;
@@ -1884,6 +1913,16 @@ select:focus-visible {
 .profile-check span {
   margin-left: auto;
   color: var(--faint);
+}
+
+@media (max-width: 760px) {
+  .campaign-readiness-blocker {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .campaign-readiness-blocker__actions {
+    flex-wrap: wrap;
+  }
 }
 
 .campaign-hero {

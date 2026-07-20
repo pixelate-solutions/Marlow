@@ -7,7 +7,17 @@ import { getSendingSettings } from "@/lib/queries";
 
 export const metadata = { title: "Sending settings" };
 
-export default async function SendingSettingsPage() {
+export default async function SendingSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const requestedReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  const returnTo =
+    requestedReturnTo?.startsWith("/") && !requestedReturnTo.startsWith("//")
+      ? requestedReturnTo
+      : null;
   const [settings, auth] = await Promise.all([getSendingSettings(), getAuthContext()]);
   const mailboxes =
     auth && !isDemoMode()
@@ -29,7 +39,7 @@ export default async function SendingSettingsPage() {
       />
       <div className="settings-layout">
         <SettingsNav current="sending" />
-        <SendingSettingsForm settings={settings} mailboxes={mailboxes} />
+        <SendingSettingsForm settings={settings} mailboxes={mailboxes} returnTo={returnTo} />
       </div>
     </div>
   );

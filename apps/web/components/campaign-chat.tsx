@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { DiscoveryActivity } from "@/lib/discovery-activity";
@@ -30,6 +31,8 @@ type DiscoveryResponseData = {
   assistantMessage: string;
   readinessScore: number;
   ready?: boolean;
+  missingRequiredFields?: string[];
+  unresolvedQuestions?: string[];
   activity?: DiscoveryActivity[];
 };
 
@@ -168,11 +171,13 @@ export function CampaignChat({
   initialMessages,
   initialProgress = 18,
   initialReady = false,
+  initialMissingRequiredFields = [],
 }: {
   initialCampaignId?: string | null;
   initialMessages?: CampaignChatMessage[];
   initialProgress?: number;
   initialReady?: boolean;
+  initialMissingRequiredFields?: string[];
 }) {
   const router = useRouter();
   const startingMessages = initialMessages?.length ? initialMessages : [openingMessage];
@@ -190,6 +195,7 @@ export function CampaignChat({
   const [campaignId, setCampaignId] = useState<string | null>(initialCampaignId);
   const [pendingAnswer, setPendingAnswer] = useState<string | null>(unansweredMessage);
   const [ready, setReady] = useState(initialReady);
+  const [missingRequiredFields, setMissingRequiredFields] = useState(initialMissingRequiredFields);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
@@ -258,7 +264,10 @@ export function CampaignChat({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const content = value.trim();
+    await sendAnswer(value.trim());
+  }
+
+  async function sendAnswer(content: string) {
     if (!content || busy) return;
     const lastMessage = messages[messages.length - 1];
     const retryingFailedTurn =
@@ -331,6 +340,7 @@ export function CampaignChat({
       await revealAssistantMessage(data.assistantMessage, activity);
       setReady(Boolean(data.ready));
       setProgress(data.readinessScore);
+      setMissingRequiredFields(data.missingRequiredFields ?? []);
     } catch {
       setValue(content);
       setTracing(false);
@@ -351,6 +361,11 @@ export function CampaignChat({
     } finally {
       setLoading(false);
     }
+  }
+
+  async function recheckReadiness() {
+    if (!campaignId || busy) return;
+    await sendAnswer("I updated the sending settings. Please recheck campaign readiness.");
   }
 
   async function startCampaign() {
@@ -375,6 +390,43 @@ export function CampaignChat({
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
   }
+
+  const needsPostalAddress = missingRequiredFields.includes("sender.postalAddress");
+  const needsMailbox = missingRequiredFields.includes("sender.sendingMailboxId");
+  const profileSections = [
+    {
+      label: "Company and offer",
+      prefixes: ["campaignObjective", "sender.company", "offer.summary", "offer.primaryValue"],
+      defaultCaptured: true,
+    },
+    {
+      label: "Target market",
+      prefixes: ["targetAccount"],
+      defaultCaptured: true,
+    },
+    {
+      label: "Target personas",
+      prefixes: ["targetPersonas"],
+      defaultCaptured: false,
+    },
+    {
+      label: "Proof and CTA",
+      prefixes: ["offer.painsSolved", "offer.callToAction", "offer.approvedProof"],
+      defaultCaptured: false,
+    },
+    {
+      label: "Sending guardrails",
+      prefixes: [
+        "sender.name",
+        "sender.signature",
+        "sender.postalAddress",
+        "sender.sendingMailboxId",
+        "limits",
+        "messaging.tone",
+      ],
+      defaultCaptured: false,
+    },
+  ];
 
   return (
     <div className="new-campaign">
@@ -469,6 +521,39 @@ export function CampaignChat({
               {starting ? "Starting campaign…" : "Start prospecting"}
             </button>
           </div>
+        ) : needsPostalAddress || needsMailbox ? (
+          <div className="campaign-readiness-blocker" role="status">
+            <div>
+              <strong>
+                {needsPostalAddress
+                  ? "Add a postal address to continue"
+                  : "Connect a sending mailbox to continue"}
+              </strong>
+              <span>
+                {needsPostalAddress
+                  ? "Marlow needs a valid postal address for the compliance footer before prospecting can start."
+                  : "Choose the mailbox that should send this campaign before prospecting can start."}
+              </span>
+            </div>
+            <div className="campaign-readiness-blocker__actions">
+              <Link
+                className="button button--secondary button--sm"
+                href={`/settings/sending?returnTo=${encodeURIComponent(
+                  campaignId ? `/campaigns/${campaignId}` : "/campaigns",
+                )}`}
+              >
+                Complete sending setup
+              </Link>
+              <button
+                className="button button--primary button--sm"
+                type="button"
+                disabled={busy}
+                onClick={recheckReadiness}
+              >
+                {busy ? "Checking…" : "Recheck readiness"}
+              </button>
+            </div>
+          </div>
         ) : (
           <form className="chat-compose" onSubmit={submit}>
             {pendingAnswer && !loading ? (
@@ -514,35 +599,35 @@ export function CampaignChat({
           </div>
           <div className="readiness-copy">
             <strong>{progress}% ready</strong>
-            <span>More detail needed before search</span>
+            <span>
+              {ready
+                ? "Ready to start prospecting"
+                : missingRequiredFields.length
+                  ? `${missingRequiredFields.length} requirement${missingRequiredFields.length === 1 ? "" : "s"} remaining`
+                  : "More detail needed before search"}
+            </span>
           </div>
         </div>
         <div className="profile-checks">
-          <div className="profile-check">
-            <CheckCircle2 />
-            <strong>Company and offer</strong>
-            <span>Captured</span>
-          </div>
-          <div className="profile-check">
-            <CheckCircle2 />
-            <strong>Target market</strong>
-            <span>Captured</span>
-          </div>
-          <div className="profile-check profile-check--missing">
-            <CircleDashed />
-            <strong>Target personas</strong>
-            <span>Missing</span>
-          </div>
-          <div className="profile-check profile-check--missing">
-            <CircleDashed />
-            <strong>Proof and CTA</strong>
-            <span>Missing</span>
-          </div>
-          <div className="profile-check profile-check--missing">
-            <CircleDashed />
-            <strong>Sending guardrails</strong>
-            <span>Missing</span>
-          </div>
+          {profileSections.map((section) => {
+            const captured = ready
+              ? true
+              : missingRequiredFields.length
+                ? !missingRequiredFields.some((field) =>
+                    section.prefixes.some((prefix) => field.startsWith(prefix)),
+                  )
+                : section.defaultCaptured;
+            return (
+              <div
+                className={`profile-check${captured ? "" : " profile-check--missing"}`}
+                key={section.label}
+              >
+                {captured ? <CheckCircle2 /> : <CircleDashed />}
+                <strong>{section.label}</strong>
+                <span>{captured ? "Captured" : "Missing"}</span>
+              </div>
+            );
+          })}
         </div>
       </aside>
     </div>
