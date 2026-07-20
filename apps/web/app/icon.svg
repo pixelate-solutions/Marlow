@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Marlow</title>
+  <rect width="64" height="64" rx="18" fill="#142824" />
+  <path
+    d="M18 40a17 17 0 1 0 5-19"
+    fill="none"
+    stroke="#24b88a"
+    stroke-linecap="round"
+    stroke-width="7"
+  />
+</svg>
