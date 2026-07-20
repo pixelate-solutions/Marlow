@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { Badge, Card, Progress } from "@marlow/ui";
+import { CampaignDeleteButton } from "./campaign-delete-button";
 
 export type CampaignBrowserItem = {
   id: string;
@@ -32,9 +33,11 @@ function matchesFilter(status: string, filter: Filter): boolean {
 }
 
 export function CampaignBrowser({ campaigns }: { campaigns: CampaignBrowserItem[] }) {
+  const [items, setItems] = useState(campaigns);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("All");
-  const visible = campaigns.filter(
+  const [notice, setNotice] = useState("");
+  const visible = items.filter(
     (campaign) =>
       matchesFilter(campaign.status, filter) &&
       `${campaign.name} ${campaign.objective}`.toLowerCase().includes(query.toLowerCase()),
@@ -42,6 +45,11 @@ export function CampaignBrowser({ campaigns }: { campaigns: CampaignBrowserItem[
 
   return (
     <>
+      {notice ? (
+        <div className="status-banner status-banner--error" role="alert">
+          {notice}
+        </div>
+      ) : null}
       <div className="campaigns-toolbar">
         <div className="search-box">
           <Search />
@@ -82,22 +90,34 @@ export function CampaignBrowser({ campaigns }: { campaigns: CampaignBrowserItem[
                   </Link>
                   <p className="campaign-card__objective">{campaign.objective}</p>
                 </div>
-                <Link
-                  className="campaign-card__action"
-                  href={
-                    campaign.followUpDraftId
-                      ? `/review/${campaign.followUpDraftId}`
-                      : `/campaigns/${campaign.id}`
-                  }
-                >
-                  {campaign.followUpDraftId
-                    ? "Review follow-up"
-                    : campaign.status === "DISCOVERING"
-                      ? "Continue"
-                      : campaign.status === "READY"
-                        ? "Start"
-                        : "Open"}
-                </Link>
+                <div className="campaign-card__actions">
+                  <Link
+                    className="campaign-card__action"
+                    href={
+                      campaign.followUpDraftId
+                        ? `/review/${campaign.followUpDraftId}`
+                        : `/campaigns/${campaign.id}`
+                    }
+                  >
+                    {campaign.followUpDraftId
+                      ? "Review follow-up"
+                      : campaign.status === "DISCOVERING"
+                        ? "Continue"
+                        : campaign.status === "READY"
+                          ? "Start"
+                          : "Open"}
+                  </Link>
+                  <CampaignDeleteButton
+                    compact
+                    campaignId={campaign.id}
+                    campaignName={campaign.name}
+                    onDeleted={(campaignId) => {
+                      setItems((current) => current.filter((item) => item.id !== campaignId));
+                      setNotice("");
+                    }}
+                    onError={setNotice}
+                  />
+                </div>
               </div>
               {campaign.followUpNeeded > 0 ? (
                 <div className="campaign-card__follow-up">

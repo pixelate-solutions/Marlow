@@ -1327,6 +1327,33 @@ select:focus-visible {
 .campaign-card__action:hover {
   text-decoration: underline;
 }
+.campaign-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.campaign-card__delete {
+  width: 30px;
+  height: 30px;
+}
+.campaign-card__delete:hover {
+  color: var(--red);
+  background: var(--red-soft);
+  border-color: #f2cfcc;
+}
+.campaign-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.campaign-delete--compact {
+  display: inline-flex;
+}
+.campaign-delete__error {
+  max-width: 220px;
+  color: var(--red);
+  font-size: 10px;
+}
 .campaign-card__follow-up {
   display: flex;
   align-items: center;

@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CampaignChat } from "./campaign-chat";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
@@ -7,6 +7,8 @@ const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
 describe("campaign discovery chat", () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     vi.restoreAllMocks();
     router.push.mockReset();
@@ -56,6 +58,50 @@ describe("campaign discovery chat", () => {
         "/api/campaigns/campaign-1/messages",
         expect.objectContaining({ method: "POST" }),
       ),
+    );
+  });
+
+  it("sends with Enter and keeps Shift+Enter available for a new line", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            id: "campaign-3",
+            assistantMessage: "Which regions should I prioritize?",
+            readinessScore: 36,
+            ready: false,
+          },
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    render(<CampaignChat />);
+    const composer = screen.getByLabelText("Answer Marlow");
+    fireEvent.change(composer, { target: { value: "Operations leaders\nat manufacturers" } });
+
+    const shifted = new KeyboardEvent("keydown", {
+      key: "Enter",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(shifted);
+    expect(shifted.defaultPrevented).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const entered = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    composer.dispatchEvent(entered);
+    expect(entered.defaultPrevented).toBe(true);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/campaigns",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 

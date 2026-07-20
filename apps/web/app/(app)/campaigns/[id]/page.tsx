@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, Card, Progress } from "@marlow/ui";
 import { CampaignChat } from "@/components/campaign-chat";
+import { CampaignDeleteButton } from "@/components/campaign-delete-button";
 import { PageHeader } from "@/components/page-header";
 import { getCampaign, getCampaignDiscovery, getDrafts } from "@/lib/queries";
 
@@ -22,6 +23,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               ? "Review the completed profile, then start prospecting when you are ready."
               : "Pick up where you left off. Your saved answers are already here."
           }
+          actions={<CampaignDeleteButton campaignId={id} campaignName={campaign.name} />}
         />
         <CampaignChat
           initialCampaignId={id}
@@ -55,6 +57,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             <p>{campaign.objective}</p>
           </div>
           <div className="page-header__actions">
+            <CampaignDeleteButton campaignId={id} campaignName={campaign.name} />
             <button className="button button--secondary button--md" type="button">
               <Pause size={14} />
               Pause

@@ -2,7 +2,7 @@
 
 import { CheckCircle2, CircleDashed, Play, Send, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
 
 export type CampaignChatMessage = {
   role: "assistant" | "user";
@@ -142,6 +142,12 @@ export function CampaignChat({
     }
   }
 
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  }
+
   return (
     <div className="new-campaign">
       <section className="card chat-card">
@@ -203,6 +209,7 @@ export function CampaignChat({
               <textarea
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
                 aria-label="Answer Marlow"
                 placeholder="Describe your offer and ideal customer…"
                 rows={2}

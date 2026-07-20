@@ -41,6 +41,7 @@ export class SupabaseAgentRepository implements AgentRepository {
         )
         .eq("id", campaignId)
         .eq("campaign_profiles.is_current", true)
+        .is("deleted_at", null)
         .single(),
     ) as unknown as {
       id: string;
@@ -74,6 +75,7 @@ export class SupabaseAgentRepository implements AgentRepository {
       .from("campaigns")
       .update({ status: to, status_changed_at: new Date().toISOString() })
       .eq("id", campaignId)
+      .is("deleted_at", null)
       .in("status", from)
       .select("id")
       .maybeSingle();

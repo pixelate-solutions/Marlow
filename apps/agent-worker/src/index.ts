@@ -189,7 +189,8 @@ async function markJob(
       ...(retry ? { run_after: new Date(Date.now() + backoffSeconds * 1_000).toISOString() } : {}),
       ...(error ? { last_error: error instanceof Error ? error.message : String(error) } : {}),
     })
-    .eq("id", job.id);
+    .eq("id", job.id)
+    .eq("status", "RUNNING");
 }
 
 async function processJob(job: AgentJob): Promise<void> {
