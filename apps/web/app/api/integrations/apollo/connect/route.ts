@@ -73,16 +73,12 @@ export async function POST(request: Request) {
       },
       signingSecret,
     );
-    const preferredScopes = metadata.scopesSupported.filter((scope) =>
-      /search|enrich|contact|list|email|send|account|usage/i.test(scope),
-    );
     const authorizationUrl = buildAuthorizationUrl({
       metadata,
       clientId,
       redirectUri,
       state,
       challenge: pkce.challenge,
-      scopes: preferredScopes,
     });
     return apiOk({ authorizationUrl });
   } catch (error) {

@@ -88,7 +88,6 @@ export function buildAuthorizationUrl(input: {
   redirectUri: string;
   state: string;
   challenge: string;
-  scopes: string[];
 }): string {
   const url = new URL(input.metadata.authorizationEndpoint);
   url.searchParams.set("response_type", "code");
@@ -97,7 +96,6 @@ export function buildAuthorizationUrl(input: {
   url.searchParams.set("state", input.state);
   url.searchParams.set("code_challenge", input.challenge);
   url.searchParams.set("code_challenge_method", "S256");
-  if (input.scopes.length > 0) url.searchParams.set("scope", input.scopes.join(" "));
   return url.toString();
 }
 
