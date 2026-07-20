@@ -6,6 +6,7 @@ import {
   demoSuppressions,
 } from "./demo-data";
 import { getAuthContext, isDemoMode } from "./auth";
+import { readDiscoveryActivities } from "./discovery-activity";
 import { createSupabaseServerClient } from "./supabase/server";
 
 export async function getCampaigns() {
@@ -124,6 +125,11 @@ export async function getCampaignDiscovery(id: string) {
     messages: rows.map((row) => ({
       role: row.role as "user" | "assistant",
       content: row.content,
+      activity: readDiscoveryActivities(
+        row.structured_data && typeof row.structured_data === "object"
+          ? (row.structured_data as Record<string, unknown>).publicActivity
+          : undefined,
+      ),
     })),
     readinessScore:
       profileResult.data?.readiness_score ??

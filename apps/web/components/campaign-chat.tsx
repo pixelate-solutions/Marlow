@@ -1,8 +1,20 @@
 "use client";
 
-import { CheckCircle2, CircleDashed, Play, Send, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  CircleDashed,
+  Database,
+  LoaderCircle,
+  Play,
+  Send,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import type { DiscoveryActivity } from "@/lib/discovery-activity";
 import { ChatMarkdown } from "./chat-markdown";
 
 export type CampaignChatMessage = {
@@ -10,12 +22,140 @@ export type CampaignChatMessage = {
   content: string;
   kind?: "error" | "streaming";
   retryContent?: string;
+  activity?: DiscoveryActivity[];
+};
+
+type DiscoveryResponseData = {
+  id?: string;
+  assistantMessage: string;
+  readinessScore: number;
+  ready?: boolean;
+  activity?: DiscoveryActivity[];
+};
+
+type DiscoveryResponse = {
+  data?: DiscoveryResponseData;
+  error?: { message: string };
 };
 
 const streamIntervalMs = 24;
 
 function responseChunks(content: string): string[] {
   return content.match(/\S+\s*/g) ?? [content];
+}
+
+function upsertActivity(
+  activities: DiscoveryActivity[],
+  activity: DiscoveryActivity,
+): DiscoveryActivity[] {
+  const index = activities.findIndex((item) => item.id === activity.id);
+  if (index === -1) return [...activities, activity];
+  const next = [...activities];
+  next[index] = activity;
+  return next;
+}
+
+function activityDuration(durationMs?: number): string | null {
+  if (durationMs === undefined) return null;
+  if (durationMs < 1_000) return `${durationMs} ms`;
+  return `${(durationMs / 1_000).toFixed(durationMs < 10_000 ? 1 : 0)} s`;
+}
+
+function ActivityTrace({
+  activities,
+  live = false,
+}: {
+  activities: DiscoveryActivity[];
+  live?: boolean;
+}) {
+  return (
+    <div className="discovery-activity" aria-label="Marlow activity">
+      <div className="discovery-activity__header">
+        <span>Activity</span>
+        <span>{live ? "Live" : "Completed"}</span>
+      </div>
+      <p>Tool activity and concise reasoning summaries. Private reasoning is not shown.</p>
+      <ol>
+        {activities.map((activity) => {
+          const Icon =
+            activity.status === "warning"
+              ? AlertTriangle
+              : activity.status === "running"
+                ? LoaderCircle
+                : activity.kind === "tool"
+                  ? Database
+                  : activity.kind === "validation"
+                    ? ShieldCheck
+                    : activity.kind === "model"
+                      ? Sparkles
+                      : Check;
+          const duration = activityDuration(activity.durationMs);
+          return (
+            <li
+              className={`discovery-activity__item discovery-activity__item--${activity.status}`}
+              key={activity.id}
+            >
+              <span className="discovery-activity__icon">
+                <Icon size={13} aria-hidden="true" />
+              </span>
+              <span className="discovery-activity__copy">
+                <strong>{activity.label}</strong>
+                <span>{activity.detail}</span>
+              </span>
+              {duration ? <time>{duration}</time> : null}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+async function readActivityStream(
+  response: Response,
+  onActivity: (activity: DiscoveryActivity) => void,
+): Promise<{ payload: DiscoveryResponse; activity: DiscoveryActivity[] }> {
+  if (!response.body) throw new Error("The activity stream did not include a response body.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let payload: DiscoveryResponse = {};
+  let activity: DiscoveryActivity[] = [];
+
+  const consume = (block: string) => {
+    const lines = block.split("\n");
+    const event = lines
+      .find((line) => line.startsWith("event:"))
+      ?.slice(6)
+      .trim();
+    const data = lines
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+    if (!event || !data) return;
+    const value = JSON.parse(data) as DiscoveryActivity | DiscoveryResponse;
+    if (event === "activity") {
+      const nextActivity = value as DiscoveryActivity;
+      activity = upsertActivity(activity, nextActivity);
+      onActivity(nextActivity);
+    } else if (event === "result" || event === "error") {
+      payload = value as DiscoveryResponse;
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done }).replaceAll("\r\n", "\n");
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary !== -1) {
+      consume(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      boundary = buffer.indexOf("\n\n");
+    }
+    if (done) break;
+  }
+  if (buffer.trim()) consume(buffer);
+  return { payload, activity };
 }
 
 const openingMessage: CampaignChatMessage = {
@@ -43,7 +183,9 @@ export function CampaignChat({
   const [messages, setMessages] = useState<CampaignChatMessage[]>(startingMessages);
   const [value, setValue] = useState(unansweredMessage ?? "");
   const [loading, setLoading] = useState(false);
+  const [tracing, setTracing] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [activeActivity, setActiveActivity] = useState<DiscoveryActivity[]>([]);
   const [progress, setProgress] = useState(initialProgress);
   const [campaignId, setCampaignId] = useState<string | null>(initialCampaignId);
   const [pendingAnswer, setPendingAnswer] = useState<string | null>(unansweredMessage);
@@ -51,23 +193,45 @@ export function CampaignChat({
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
-  const busy = loading || streaming;
+  const activityRef = useRef<DiscoveryActivity[]>([]);
+  const busy = loading || tracing || streaming;
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView?.({ behavior: streaming ? "auto" : "smooth" });
-  }, [loading, messages, streaming]);
+  }, [activeActivity, loading, messages, streaming]);
 
-  async function revealAssistantMessage(content: string) {
+  async function replayActivityTrace(activity: DiscoveryActivity[]) {
+    if (!activity.length) return;
+    setLoading(false);
+    setTracing(true);
+    setActiveActivity([]);
+    activityRef.current = [];
+    for (const item of activity) {
+      activityRef.current = upsertActivity(activityRef.current, item);
+      setActiveActivity(activityRef.current);
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 260));
+    setTracing(false);
+  }
+
+  async function revealAssistantMessage(content: string, activity: DiscoveryActivity[] = []) {
+    setLoading(false);
+    setTracing(false);
+    setActiveActivity([]);
+    activityRef.current = [];
     const chunks = responseChunks(content);
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     if (reduceMotion || chunks.length <= 1) {
-      setMessages((current) => [...current, { role: "assistant", content }]);
+      setMessages((current) => [...current, { role: "assistant", content, activity }]);
       return;
     }
 
-    setLoading(false);
     setStreaming(true);
-    setMessages((current) => [...current, { role: "assistant", content: "", kind: "streaming" }]);
+    setMessages((current) => [
+      ...current,
+      { role: "assistant", content: "", kind: "streaming", activity },
+    ]);
     let revealed = "";
     for (const chunk of chunks) {
       await new Promise((resolve) => window.setTimeout(resolve, streamIntervalMs));
@@ -76,7 +240,7 @@ export function CampaignChat({
         const next = [...current];
         const last = next[next.length - 1];
         if (last?.role === "assistant" && last.kind === "streaming") {
-          next[next.length - 1] = { ...last, content: revealed };
+          next[next.length - 1] = { ...last, content: revealed, activity };
         }
         return next;
       });
@@ -85,7 +249,7 @@ export function CampaignChat({
       const next = [...current];
       const last = next[next.length - 1];
       if (last?.role === "assistant" && last.kind === "streaming") {
-        next[next.length - 1] = { role: "assistant", content };
+        next[next.length - 1] = { role: "assistant", content, activity };
       }
       return next;
     });
@@ -110,11 +274,14 @@ export function CampaignChat({
     setValue("");
     setPendingAnswer(content);
     setLoading(true);
+    setTracing(false);
+    setActiveActivity([]);
+    activityRef.current = [];
     try {
       const response = campaignId
         ? await fetch(`/api/campaigns/${campaignId}/messages`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
             body: JSON.stringify({ content }),
           })
         : await fetch("/api/campaigns", {
@@ -126,18 +293,30 @@ export function CampaignChat({
               initialMessage: content,
             }),
           });
-      const payload = (await response.json()) as {
-        data?: { id?: string; assistantMessage: string; readinessScore: number; ready?: boolean };
-        error?: { message: string };
-      };
+      const streamed = response.headers.get("content-type")?.includes("text/event-stream");
+      const streamResult = streamed
+        ? await readActivityStream(response, (activity) => {
+            activityRef.current = upsertActivity(activityRef.current, activity);
+            setActiveActivity(activityRef.current);
+          })
+        : null;
+      const payload = streamResult
+        ? streamResult.payload
+        : ((await response.json()) as DiscoveryResponse);
+      const activity = streamResult?.activity ?? payload.data?.activity ?? [];
       if (!response.ok || !payload.data) {
         setValue(content);
+        setLoading(false);
+        setTracing(false);
+        setActiveActivity([]);
+        activityRef.current = [];
         setMessages((current) => [
           ...current,
           {
             role: "assistant",
             kind: "error",
             retryContent: content,
+            activity,
             content:
               payload.error?.message ??
               "I couldn’t process that answer. Your answer is ready to retry.",
@@ -148,17 +327,23 @@ export function CampaignChat({
       const data = payload.data;
       if (data.id) setCampaignId(data.id);
       setPendingAnswer(null);
-      await revealAssistantMessage(data.assistantMessage);
+      if (!streamed) await replayActivityTrace(activity);
+      await revealAssistantMessage(data.assistantMessage, activity);
       setReady(Boolean(data.ready));
       setProgress(data.readinessScore);
     } catch {
       setValue(content);
+      setTracing(false);
+      const activity = activityRef.current;
+      setActiveActivity([]);
+      activityRef.current = [];
       setMessages((current) => [
         ...current,
         {
           role: "assistant",
           kind: "error",
           retryContent: content,
+          activity,
           content:
             "The discovery service is temporarily unavailable. Your answer is ready to retry.",
         },
@@ -202,10 +387,14 @@ export function CampaignChat({
             <strong>Campaign discovery</strong>
             <span>
               {loading
-                ? "Thinking about the next useful question…"
-                : streaming
-                  ? "Writing the response…"
-                  : "Marlow asks one question at a time"}
+                ? activeActivity.length
+                  ? "Showing live model activity…"
+                  : "Thinking about the next useful question…"
+                : tracing
+                  ? "Reviewing completed activity…"
+                  : streaming
+                    ? "Writing the response…"
+                    : "Marlow asks one question at a time"}
             </span>
           </div>
         </header>
@@ -216,6 +405,9 @@ export function CampaignChat({
                 {message.role === "user" ? "AM" : "M"}
               </span>
               <div>
+                {message.role === "assistant" && message.activity?.length ? (
+                  <ActivityTrace activities={message.activity} />
+                ) : null}
                 <div
                   className={`message__bubble${message.kind === "streaming" ? " message__bubble--streaming" : ""}`}
                   data-testid={message.kind === "streaming" ? "streaming-response" : undefined}
@@ -230,7 +422,15 @@ export function CampaignChat({
               </div>
             </div>
           ))}
-          {loading ? (
+          {(loading || tracing) && activeActivity.length ? (
+            <div className="message message--assistant message--activity" role="status">
+              <span className="avatar avatar--teal">M</span>
+              <div>
+                <ActivityTrace activities={activeActivity} live />
+                <time>Now</time>
+              </div>
+            </div>
+          ) : loading ? (
             <div className="message message--assistant message--thinking" role="status">
               <span className="avatar avatar--teal">M</span>
               <div>

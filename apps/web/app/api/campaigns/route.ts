@@ -2,6 +2,7 @@ import { z } from "zod";
 import { apiError, apiOk } from "@/lib/api";
 import { requireAuth, isDemoMode } from "@/lib/auth";
 import { DEMO_IDS, demoCampaigns } from "@/lib/demo-data";
+import type { DiscoveryActivity } from "@/lib/discovery-activity";
 import { assertCsrf, hashIp } from "@/lib/security";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -34,6 +35,24 @@ export async function POST(request: Request) {
     assertCsrf(request);
     const auth = await requireAuth(["owner", "admin", "member"]);
     const input = createCampaignSchema.parse(await request.json());
+    const activity: DiscoveryActivity[] = input.initialMessage
+      ? [
+          {
+            id: "campaign",
+            kind: "tool",
+            label: "Campaign memory",
+            detail: "Created the campaign and saved your opening answer.",
+            status: "complete",
+          },
+          {
+            id: "validation",
+            kind: "validation",
+            label: "Discovery planner",
+            detail: "Selected the next required campaign detail.",
+            status: "complete",
+          },
+        ]
+      : [];
     if (isDemoMode())
       return apiOk(
         {
@@ -42,6 +61,7 @@ export async function POST(request: Request) {
           assistantMessage:
             "That gives me a useful starting point. Which roles feel the pain most directly, and who normally owns the buying decision?",
           readinessScore: 36,
+          activity,
         },
         { status: 201 },
       );
@@ -91,7 +111,7 @@ export async function POST(request: Request) {
               campaign_id: campaign.id,
               role: "assistant",
               content: assistantMessage,
-              structured_data: { ready: false, readinessScore },
+              structured_data: { ready: false, readinessScore, publicActivity: activity },
             },
           ]
         : []),
@@ -115,6 +135,7 @@ export async function POST(request: Request) {
         assistantMessage,
         readinessScore,
         ready: false,
+        activity,
       },
       { status: 201 },
     );

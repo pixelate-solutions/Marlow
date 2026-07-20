@@ -1608,6 +1608,95 @@ select:focus-visible {
   min-width: 102px;
   color: var(--muted);
 }
+.message--activity {
+  max-width: 90%;
+}
+.discovery-activity {
+  width: min(520px, 100%);
+  margin-bottom: 7px;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: #f8fbf9;
+}
+.discovery-activity__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.discovery-activity__header span:last-child {
+  color: var(--accent-dark);
+  font-size: 9px;
+}
+.discovery-activity > p {
+  margin: 4px 0 9px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+.discovery-activity ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.discovery-activity__item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+.discovery-activity__icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+.discovery-activity__item--running .discovery-activity__icon svg {
+  animation: activity-spin 900ms linear infinite;
+}
+.discovery-activity__item--warning .discovery-activity__icon {
+  color: #8b601e;
+  background: var(--amber-soft);
+}
+.discovery-activity__copy,
+.discovery-activity__copy strong,
+.discovery-activity__copy span {
+  display: block;
+}
+.discovery-activity__copy strong {
+  color: var(--ink);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.discovery-activity__copy span {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+.message .discovery-activity__item time {
+  display: block;
+  margin: 2px 0 0;
+  color: var(--faint);
+  font-size: 8px;
+  white-space: nowrap;
+}
+@keyframes activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .thinking-dots {
   display: inline-flex;
   align-items: center;

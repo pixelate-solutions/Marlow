@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CampaignChat } from "./campaign-chat";
 
@@ -144,6 +144,74 @@ describe("campaign discovery chat", () => {
     expect(streamed).not.toHaveTextContent(reply);
     expect(await screen.findByText(reply, {}, { timeout: 2_000 })).toBeVisible();
     expect(screen.getByLabelText("Answer Marlow")).toBeEnabled();
+  });
+
+  it("shows streamed tool and model activity before the final response", async () => {
+    const encoder = new TextEncoder();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+      },
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+      }),
+    );
+
+    render(
+      <CampaignChat
+        initialCampaignId="campaign-activity"
+        initialMessages={[{ role: "assistant", content: "Who should this campaign reach?" }]}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Answer Marlow"), {
+      target: { value: "Operations leaders" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send answer" }));
+
+    await act(async () => {
+      streamController.enqueue(
+        encoder.encode(
+          'event: activity\ndata: {"id":"context","kind":"tool","label":"Campaign memory","detail":"Loading saved discovery messages.","status":"running"}\n\n',
+        ),
+      );
+    });
+    expect(await screen.findByText("Loading saved discovery messages.")).toBeVisible();
+    expect(screen.queryByText("Next question?")).not.toBeInTheDocument();
+
+    const completedActivity = {
+      id: "context",
+      kind: "tool",
+      label: "Campaign memory",
+      detail: "Loaded 4 saved messages.",
+      status: "complete",
+      durationMs: 42,
+    } as const;
+    await act(async () => {
+      streamController.enqueue(
+        encoder.encode(`event: activity\ndata: ${JSON.stringify(completedActivity)}\n\n`),
+      );
+      streamController.enqueue(
+        encoder.encode(
+          `event: result\ndata: ${JSON.stringify({
+            data: {
+              assistantMessage: "Next question?",
+              readinessScore: 54,
+              ready: false,
+              activity: [completedActivity],
+            },
+          })}\n\n`,
+        ),
+      );
+      streamController.close();
+    });
+
+    expect(await screen.findByText("Next question?")).toBeVisible();
+    expect(screen.getByText("Loaded 4 saved messages.")).toBeVisible();
+    expect(screen.getByText(/Private reasoning is not shown/i)).toBeVisible();
   });
 
   it("formats assistant Markdown while keeping user messages as plain text", () => {

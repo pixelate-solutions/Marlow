@@ -12,7 +12,7 @@ test.describe("deterministic collaborative campaign", () => {
     await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
 
     await page.goto("/sign-in?error=invalid-credentials");
-    await expect(page.getByRole("alert")).toContainText(
+    await expect(page.locator(".auth-error")).toContainText(
       "That email and password combination did not work.",
     );
     await expect(page.getByRole("link", { name: "Reset your password" })).toHaveAttribute(
