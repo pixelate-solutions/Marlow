@@ -55,18 +55,43 @@ function decodeHtml(html: string): string {
 }
 
 export async function fetchPublicPage(value: string): Promise<RetrievedPage> {
-  const url = await assertPublicUrl(value);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
-    const response = await fetch(url, {
-      redirect: "error",
-      signal: controller.signal,
-      headers: {
-        Accept: "text/html,text/plain,application/xhtml+xml",
-        "User-Agent": "MarlowResearchBot/1.0 (+public-web-research)",
-      },
-    });
+    let url = await assertPublicUrl(value);
+    let response: Response | undefined;
+    for (let redirects = 0; redirects <= 5; redirects += 1) {
+      try {
+        response = await fetch(url, {
+          redirect: "manual",
+          signal: controller.signal,
+          headers: {
+            Accept: "text/html,text/plain,application/xhtml+xml",
+            "User-Agent": "MarlowResearchBot/1.0 (+public-web-research)",
+          },
+        });
+      } catch (error) {
+        if (error instanceof ResearchError) throw error;
+        throw new ResearchError(
+          "SEARCH_UNAVAILABLE",
+          controller.signal.aborted
+            ? "Public page retrieval timed out."
+            : "Public page could not be retrieved.",
+          true,
+        );
+      }
+
+      if (![301, 302, 303, 307, 308].includes(response.status)) break;
+      const location = response.headers.get("location");
+      if (!location)
+        throw new ResearchError("SEARCH_UNAVAILABLE", "Public page redirect was incomplete.");
+      if (redirects === 5)
+        throw new ResearchError("FETCH_BLOCKED", "Public page exceeded the redirect limit.");
+      url = await assertPublicUrl(new URL(location, url).toString());
+    }
+
+    if (!response)
+      throw new ResearchError("SEARCH_UNAVAILABLE", "Public page could not be retrieved.", true);
     if (!response.ok)
       throw new ResearchError(
         "SEARCH_UNAVAILABLE",

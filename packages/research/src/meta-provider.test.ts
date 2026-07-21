@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { officialWebsiteFallbackResearch } from "./meta-provider";
+import {
+  officialWebsiteFallbackResearch,
+  unavailableWebsiteFallbackResearch,
+} from "./meta-provider";
 
 describe("official website research fallback", () => {
   it("creates a sourced claim when broader grounding is unavailable", () => {
@@ -18,6 +21,17 @@ describe("official website research fallback", () => {
         confidence: "medium",
       }),
     ]);
+    expect(result.uncertainty).toHaveLength(1);
+  });
+
+  it("returns an evidence-free result when both research paths are unavailable", () => {
+    const result = unavailableWebsiteFallbackResearch(
+      "Example Co",
+      "https://example.invalid/",
+    );
+
+    expect(result.claims).toEqual([]);
+    expect(result.signals).toEqual([]);
     expect(result.uncertainty).toHaveLength(1);
   });
 });

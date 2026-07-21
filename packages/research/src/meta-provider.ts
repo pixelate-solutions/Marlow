@@ -56,6 +56,20 @@ export function officialWebsiteFallbackResearch(
   };
 }
 
+export function unavailableWebsiteFallbackResearch(
+  companyName: string,
+  websiteUrl: string,
+): CompanyResearch {
+  return {
+    summary: `Marlow could not retrieve the public website for ${companyName}.`,
+    signals: [],
+    claims: [],
+    uncertainty: [
+      `Broader web search and the public website at ${websiteUrl} were temporarily unavailable.`,
+    ],
+  };
+}
+
 export class MetaSearchGroundingProvider implements WebResearchProvider {
   private readonly client: OpenAI;
 
@@ -117,8 +131,13 @@ export class MetaSearchGroundingProvider implements WebResearchProvider {
     } catch (error) {
       if (!(error instanceof ResearchError ? error.retryable : error instanceof z.ZodError))
         throw error;
-      const page = await fetchPublicPage(input.websiteUrl);
-      return officialWebsiteFallbackResearch(input.companyName, page);
+      try {
+        const page = await fetchPublicPage(input.websiteUrl);
+        return officialWebsiteFallbackResearch(input.companyName, page);
+      } catch (fallbackError) {
+        if (!(fallbackError instanceof ResearchError)) throw fallbackError;
+        return unavailableWebsiteFallbackResearch(input.companyName, input.websiteUrl);
+      }
     }
   }
 }
