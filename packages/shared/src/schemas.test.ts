@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { campaignProfileSchema, sendingSettingsSchema } from "./schemas";
+import { campaignProfileSchema, outreachDraftSchema, sendingSettingsSchema } from "./schemas";
 
 describe("campaign profile schema", () => {
   const valid = {
@@ -76,5 +76,22 @@ describe("sending settings schema", () => {
         allowedDays: [],
       }),
     ).toThrow();
+  });
+});
+
+describe("outreach draft schema", () => {
+  it("normalizes fractional model confidence to an integer percentage", () => {
+    const draft = outreachDraftSchema.parse({
+      subject: "Operations question",
+      body: "Would a short conversation be worthwhile?",
+      personalizationSummary: "Relevant operations role",
+      selectedAngle: "Workflow complexity",
+      qualificationSummary: "Matches the campaign criteria",
+      supportingClaimIds: [],
+      confidence: 0.7,
+      complianceWarnings: [],
+    });
+
+    expect(draft.confidence).toBe(70);
   });
 });

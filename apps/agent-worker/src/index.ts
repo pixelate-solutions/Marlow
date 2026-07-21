@@ -27,6 +27,7 @@ import {
 } from "@marlow/research";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { log } from "./logger";
+import { isRetryableWorkerError } from "./retry";
 import { processSendJob } from "./send";
 
 const environment = parseEnvironment(process.env, {
@@ -385,12 +386,9 @@ async function processJob(job: AgentJob): Promise<void> {
     });
   } catch (error) {
     const retryable =
-      job.attempts < 5 &&
-      (error instanceof ApolloError
-        ? error.retryable
-        : !/APPROVAL_|SUPPRESSED|PERMISSION|CREDIT|DELIVERY_UNKNOWN|APOLLO_NOT_CONNECTED|APOLLO_REAUTHORIZATION_REQUIRED|APOLLO_PERMISSION_DENIED|APOLLO_PLAN_UPGRADE_REQUIRED|MAILBOX_NOT_AVAILABLE/.test(
-            error instanceof Error ? error.message : String(error),
-          ));
+      error instanceof ApolloError
+        ? job.attempts < 5 && error.retryable
+        : isRetryableWorkerError(error, job.attempts);
     try {
       await recordCampaignFailure(job, error, retryable);
     } catch (recordError) {
