@@ -13,6 +13,7 @@ import { Badge, Card, Progress } from "@marlow/ui";
 import { CampaignChat } from "@/components/campaign-chat";
 import { CampaignDeleteButton } from "@/components/campaign-delete-button";
 import { CampaignLiveRefresh } from "@/components/campaign-live-refresh";
+import { CampaignRetryButton } from "@/components/campaign-retry-button";
 import { PageHeader } from "@/components/page-header";
 import {
   campaignWorkflowSteps,
@@ -108,6 +109,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           </div>
           <div className="page-header__actions">
             <CampaignDeleteButton campaignId={id} campaignName={campaign.name} />
+            {campaign.status === "FAILED" ? <CampaignRetryButton campaignId={id} /> : null}
             <Link
               className="button button--primary button--md"
               href={campaign.followUpDraftId ? `/review/${campaign.followUpDraftId}` : "/review"}

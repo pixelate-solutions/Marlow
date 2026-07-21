@@ -1390,6 +1390,20 @@ select:focus-visible {
   color: var(--red);
   font-size: 10px;
 }
+.campaign-retry {
+  display: inline-flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 6px;
+}
+.campaign-retry__error {
+  max-width: 260px;
+  color: var(--red);
+  font-size: 10px;
+}
+.campaign-retry .spin {
+  animation: activity-spin 0.8s linear infinite;
+}
 .campaign-card__follow-up {
   display: flex;
   align-items: center;
