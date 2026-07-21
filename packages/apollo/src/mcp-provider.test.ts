@@ -72,6 +72,20 @@ describe("Apollo MCP argument mapping", () => {
     }
   });
 
+  it("treats Apollo rate limits as retryable instead of exhausted credits", () => {
+    expect.assertions(3);
+    try {
+      parseToolPayload({
+        isError: true,
+        content: [{ type: "text", text: "Rate limit exceeded" }],
+      });
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApolloError);
+      expect((error as ApolloError).code).toBe("APOLLO_RATE_LIMITED");
+      expect((error as ApolloError).retryable).toBe(true);
+    }
+  });
+
   it("skips incomplete companies and derives domains from valid websites", () => {
     expect(mapCompanyPayload({ id: "company-1", name: "Incomplete" })).toBeUndefined();
     expect(

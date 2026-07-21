@@ -105,6 +105,7 @@ export class CampaignOrchestrator {
     });
     const plan = searchPlanResult.value;
     const companies: ApolloCompany[] = [];
+    const companyCandidateLimit = campaign.profile.limits.requestedProspects * 3;
     let companyCursor: string | undefined;
     do {
       checkLimits();
@@ -118,9 +119,9 @@ export class CampaignOrchestrator {
       const page = await this.dependencies.apollo.searchCompanies(
         this.companySearchInput(plan, companyCursor),
       );
-      companies.push(...page.items);
+      companies.push(...page.items.slice(0, companyCandidateLimit - companies.length));
       companyCursor = page.nextCursor;
-    } while (companyCursor && companies.length < campaign.profile.limits.requestedProspects * 3);
+    } while (companyCursor && companies.length < companyCandidateLimit);
 
     await this.dependencies.repository.transitionCampaign(
       campaign.id,

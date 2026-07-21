@@ -240,6 +240,10 @@ function publicCampaignError(error: unknown): string {
       return "Apollo authorization needs to be renewed. Reconnect Apollo before retrying.";
     if (error.code === "APOLLO_PERMISSION_DENIED")
       return "Apollo did not grant a capability required by this campaign.";
+    if (error.code === "APOLLO_RATE_LIMITED")
+      return "Apollo is temporarily rate limited. Marlow will retry automatically.";
+    if (error.code === "APOLLO_CREDIT_BUDGET_REACHED")
+      return "Apollo credits are unavailable for the next campaign operation.";
   }
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("APOLLO_NOT_CONNECTED"))

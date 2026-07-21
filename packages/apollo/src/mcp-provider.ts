@@ -51,6 +51,13 @@ const toolAliases = {
 
 type Operation = keyof typeof toolAliases;
 
+const MINIMUM_REQUEST_INTERVAL_MS = 1_500;
+const RATE_LIMIT_RETRY_DELAYS_MS = [15_000, 30_000, 60_000] as const;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const contentSchema = z.object({
   content: z.array(z.object({ type: z.string(), text: z.string().optional() })).default([]),
   structuredContent: z.unknown().optional(),
@@ -116,7 +123,10 @@ function classifyApolloError(message: string, errorCode?: string): ApolloError {
       false,
     );
   }
-  if (/credit|quota|limit exceeded/.test(lower)) {
+  if (/429|rate limit|too many requests/.test(lower)) {
+    return new ApolloError("APOLLO_RATE_LIMITED", "Apollo rate limit was reached.", true);
+  }
+  if (/credit|quota|usage limit/.test(lower)) {
     return new ApolloError(
       "APOLLO_CREDIT_BUDGET_REACHED",
       "Apollo credit limit was reached.",
@@ -125,9 +135,6 @@ function classifyApolloError(message: string, errorCode?: string): ApolloError {
   }
   if (/permission|forbidden|scope/.test(lower)) {
     return new ApolloError("APOLLO_PERMISSION_DENIED", "Apollo denied this operation.", false);
-  }
-  if (/429|rate limit/.test(lower)) {
-    return new ApolloError("APOLLO_RATE_LIMITED", "Apollo rate limit was reached.", true);
   }
   return new ApolloError("APOLLO_UNAVAILABLE", "Apollo could not complete the operation.", true);
 }
@@ -330,6 +337,7 @@ export class ApolloMcpProvider implements ApolloProvider {
   private client: Client | undefined;
   private toolNames: Map<Operation, string> | undefined;
   private readonly conversationRef = randomBytes(8).toString("hex");
+  private lastRequestAt = 0;
 
   constructor(
     private readonly options: {
@@ -378,16 +386,29 @@ export class ApolloMcpProvider implements ApolloProvider {
         `Apollo does not expose the ${operation} capability.`,
         false,
       );
-    try {
-      return parseToolPayload(
-        await client.callTool({
-          name: toolName,
-          arguments: { ...args, _conversation_ref: this.conversationRef },
-        }),
+    for (let attempt = 0; ; attempt += 1) {
+      const waitForSlot = Math.max(
+        0,
+        this.lastRequestAt + MINIMUM_REQUEST_INTERVAL_MS - Date.now(),
       );
-    } catch (error) {
-      if (error instanceof ApolloError) throw error;
-      throw classifyApolloError(error instanceof Error ? error.message : String(error));
+      if (waitForSlot > 0) await delay(waitForSlot);
+      this.lastRequestAt = Date.now();
+      try {
+        return parseToolPayload(
+          await client.callTool({
+            name: toolName,
+            arguments: { ...args, _conversation_ref: this.conversationRef },
+          }),
+        );
+      } catch (error) {
+        const classified =
+          error instanceof ApolloError
+            ? error
+            : classifyApolloError(error instanceof Error ? error.message : String(error));
+        const retryDelay = RATE_LIMIT_RETRY_DELAYS_MS[attempt];
+        if (classified.code !== "APOLLO_RATE_LIMITED" || retryDelay === undefined) throw classified;
+        await delay(retryDelay);
+      }
     }
   }
 
