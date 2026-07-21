@@ -13,6 +13,14 @@ function titleMatches(profile: CampaignProfile, title: string): boolean {
   return profile.targetPersonas.some((persona) => includesLoose(persona.titles, title));
 }
 
+function companyIndustryMatches(profile: CampaignProfile, company: ApolloCompany): boolean {
+  const targetTerms = [...profile.targetAccount.industries, ...profile.targetAccount.keywords];
+  const descriptors = [company.industry, ...company.keywords, ...company.name.split(/[^a-z0-9]+/i)]
+    .filter((value): value is string => Boolean(value))
+    .filter((value) => value.length >= 4 && !/^(company|corporation|incorporated)$/i.test(value));
+  return descriptors.some((descriptor) => includesLoose(targetTerms, descriptor));
+}
+
 export function calculateLeadScore(input: {
   profile: CampaignProfile;
   company: ApolloCompany;
@@ -48,7 +56,7 @@ export function calculateLeadScore(input: {
           ),
         );
   const components: LeadScoreComponents = {
-    industryMatch: includesLoose(profile.targetAccount.industries, company.industry) ? 15 : 0,
+    industryMatch: companyIndustryMatches(profile, company) ? 15 : 0,
     companySizeMatch: sizeMatch,
     geographyMatch:
       profile.targetAccount.locations.length === 0 ||

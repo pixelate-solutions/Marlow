@@ -17,6 +17,7 @@ import {
   WandSparkles,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Badge, Button, Card } from "@marlow/ui";
 import type { demoDrafts } from "@/lib/demo-data";
@@ -24,6 +25,7 @@ import type { demoDrafts } from "@/lib/demo-data";
 type Draft = (typeof demoDrafts)[number];
 
 export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }) {
+  const router = useRouter();
   const [subject, setSubject] = useState(draft.subject);
   const [body, setBody] = useState(draft.body);
   const [busy, setBusy] = useState<string | null>(null);
@@ -77,11 +79,15 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
     });
   const approve = async () => {
     if (dirty && !(await save())) return;
-    await request("send", `/api/drafts/${draft.id}/approve-and-send`, {
+    const sent = await request("send", `/api/drafts/${draft.id}/approve-and-send`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
       body: JSON.stringify({ mailboxId: draft.mailboxId }),
     });
+    if (sent) {
+      router.push("/review");
+      router.refresh();
+    }
   };
 
   return (

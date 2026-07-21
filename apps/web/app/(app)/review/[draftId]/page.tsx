@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { DraftReview } from "@/components/draft-review";
 import { PageHeader } from "@/components/page-header";
+import { ReviewQueueLiveRefresh } from "@/components/review-queue-live-refresh";
 import { getDraft, getDrafts } from "@/lib/queries";
 
 export default async function ReviewDraftPage({
@@ -13,6 +14,7 @@ export default async function ReviewDraftPage({
   if (!draft) notFound();
   return (
     <div className="page">
+      <ReviewQueueLiveRefresh />
       <PageHeader
         title="Review queue"
         description="Check the evidence, shape the message, and approve only when it feels right."

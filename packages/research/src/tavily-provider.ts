@@ -36,6 +36,8 @@ const tavilyExtractResponseSchema = z.object({
 
 type TavilyResult = z.infer<typeof tavilyResultSchema>;
 
+const LEGAL_SUFFIXES = /\b(?:co|company|corp|corporation|inc|incorporated|llc|ltd|limited)\b/g;
+
 function normalizedText(value: string): string {
   return value
     .replaceAll(String.fromCodePoint(8211), ", ")
@@ -58,6 +60,61 @@ function hostname(value: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function normalizedIdentifier(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(LEGAL_SUFFIXES, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isCompanyRelevantResult(
+  companyName: string,
+  websiteUrl: string,
+  result: TavilyResult,
+): boolean {
+  if (isOfficialSource(result.url, websiteUrl)) return true;
+  const companyIdentifier = normalizedIdentifier(companyName);
+  if (companyIdentifier.length < 4) return false;
+  const searchable = normalizedIdentifier(`${result.title} ${result.url} ${result.content}`);
+  if (searchable.includes(companyIdentifier)) return true;
+  const compactCompanyIdentifier = companyIdentifier.replaceAll(" ", "");
+  const compactSearchable = searchable.replaceAll(" ", "");
+  return (
+    compactCompanyIdentifier.length >= 7 && compactSearchable.includes(compactCompanyIdentifier)
+  );
+}
+
+function campaignTerms(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as {
+      pains?: unknown;
+      buyingSignals?: unknown;
+      keywords?: unknown;
+    };
+    return [parsed.pains, parsed.buyingSignals, parsed.keywords]
+      .flatMap((entry) => (Array.isArray(entry) ? entry : []))
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => normalizedText(entry))
+      .filter(Boolean);
+  } catch {
+    return [normalizedText(value)].filter(Boolean);
+  }
+}
+
+export function tavilyCompanySearchQuery(input: {
+  companyName: string;
+  websiteUrl: string;
+  prospectTitle: string;
+  campaignContext: string;
+}): string {
+  const websiteHost = hostname(input.websiteUrl) ?? input.websiteUrl;
+  const context = campaignTerms(input.campaignContext).join(" ").slice(0, 220);
+  const query = `"${input.companyName}" ${websiteHost} ${input.prospectTitle} recent expansion hiring acquisition new facility multiple locations operations automation ERP CRM digital transformation workflow software ${context}`;
+  return query.slice(0, 390).trim();
 }
 
 function isOfficialSource(sourceUrl: string, websiteUrl: string): boolean {
@@ -84,6 +141,13 @@ export function tavilyResultsToResearch(
   retrievedAt = new Date().toISOString(),
 ): CompanyResearch {
   const claims = results
+    .filter((result) => isCompanyRelevantResult(companyName, websiteUrl, result))
+    .sort((left, right) => {
+      const officialDifference =
+        Number(isOfficialSource(right.url, websiteUrl)) -
+        Number(isOfficialSource(left.url, websiteUrl));
+      return officialDifference || (right.score ?? 0) - (left.score ?? 0);
+    })
     .map((result) => {
       const claim = conciseExcerpt(result.content || result.raw_content || "");
       if (!claim) return undefined;
@@ -217,11 +281,7 @@ export class TavilyResearchProvider implements WebResearchProvider {
     campaignContext: string;
   }): Promise<CompanyResearch> {
     try {
-      const websiteHost = hostname(input.websiteUrl) ?? input.websiteUrl;
-      const results = await this.searchResults(
-        `"${input.companyName}" ${websiteHost} recent hiring expansion operations technology ${input.prospectTitle} ${input.campaignContext.slice(0, 180)}`,
-        { maxResults: 8 },
-      );
+      const results = await this.searchResults(tavilyCompanySearchQuery(input), { maxResults: 8 });
       const research = tavilyResultsToResearch(input.companyName, input.websiteUrl, results);
       if (research.claims.length > 0) return research;
     } catch (error) {

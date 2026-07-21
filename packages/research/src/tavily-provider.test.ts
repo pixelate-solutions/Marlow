@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { TavilyResearchProvider, tavilyResultsToResearch } from "./tavily-provider";
+import {
+  TavilyResearchProvider,
+  tavilyCompanySearchQuery,
+  tavilyResultsToResearch,
+} from "./tavily-provider";
 
 describe("Tavily research provider", () => {
   it("converts Tavily results into source-backed research claims", () => {
@@ -54,5 +58,41 @@ describe("Tavily research provider", () => {
         headers: expect.objectContaining({ Authorization: "Bearer tvly-test" }),
       }),
     );
+  });
+
+  it("excludes unrelated third-party results from company evidence", () => {
+    const research = tavilyResultsToResearch("Hoffman Equipment", "https://hoffmanequip.com", [
+      {
+        title: "Generic workflow automation advice",
+        url: "https://consulting.example/workflow-automation",
+        content: "Manufacturers can replace spreadsheets with connected workflow tools.",
+      },
+      {
+        title: "Hoffman Equipment opens a new location",
+        url: "https://industry-news.example/hoffman-equipment-location",
+        content:
+          "Hoffman Equipment opened a new location to support its growing service footprint.",
+      },
+    ]);
+
+    expect(research.claims).toHaveLength(1);
+    expect(research.claims[0]?.sourceUrl).toContain("hoffman-equipment-location");
+  });
+
+  it("builds a focused query from campaign pains and buying signals", () => {
+    const query = tavilyCompanySearchQuery({
+      companyName: "Example Manufacturing",
+      websiteUrl: "https://example.com",
+      prospectTitle: "VP Operations",
+      campaignContext: JSON.stringify({
+        pains: ["Manual data entry between disconnected systems"],
+        buyingSignals: ["Outgrown spreadsheets and disconnected tools"],
+      }),
+    });
+
+    expect(query).toContain('"Example Manufacturing"');
+    expect(query).toContain("Manual data entry");
+    expect(query).toContain("Outgrown spreadsheets");
+    expect(query.length).toBeLessThanOrEqual(390);
   });
 });

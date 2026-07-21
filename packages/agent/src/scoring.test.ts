@@ -94,4 +94,38 @@ describe("lead scoring", () => {
     });
     expect(result.total).toBe(0);
   });
+
+  it("uses the company name when Apollo omits industry metadata", () => {
+    const result = calculateLeadScore({
+      profile: {
+        ...profile,
+        targetAccount: {
+          ...profile.targetAccount,
+          industries: ["Equipment Manufacturing"],
+          keywords: ["equipment"],
+        },
+      },
+      company: {
+        id: "c",
+        name: "Reliable Equipment Manufacturing Co.",
+        domain: "reliable.example",
+        technologies: [],
+        keywords: [],
+      },
+      person: {
+        personId: "p",
+        companyId: "c",
+        firstName: "A",
+        lastName: "B",
+        title: "VP of Operations",
+        email: "a@reliable.example",
+        emailStatus: "verified",
+      },
+      claims: [],
+      hasBuyingSignal: false,
+      painPointSupported: false,
+    });
+
+    expect(result.components.industryMatch).toBe(15);
+  });
 });
