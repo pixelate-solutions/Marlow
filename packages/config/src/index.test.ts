@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getSupabasePublishableKey, getSupabaseSecretKey, parseEnvironment } from "./index";
+import {
+  getSupabasePublishableKey,
+  getSupabaseSecretKey,
+  getTavilyApiKey,
+  parseEnvironment,
+} from "./index";
 
 describe("runtime environment", () => {
   it("treats blank optional development secrets as absent", () => {
@@ -88,5 +93,30 @@ describe("runtime environment", () => {
         { requireProductionSecrets: true, runtime: "worker" },
       ),
     ).not.toThrow();
+  });
+
+  it("requires a Tavily key when the worker selects Tavily", () => {
+    expect(() =>
+      parseEnvironment(
+        {
+          NODE_ENV: "production",
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+          SUPABASE_SECRET_KEY: "sb_secret_test",
+          MODEL_API_KEY: "model-key",
+          ENCRYPTION_KEY: "e".repeat(32),
+          WEB_SEARCH_PROVIDER: "tavily",
+        },
+        { requireProductionSecrets: true, runtime: "worker" },
+      ),
+    ).toThrow(/TAVILY_API_KEY/);
+  });
+
+  it("prefers the explicit Tavily key and retains the generic fallback", () => {
+    expect(
+      getTavilyApiKey(
+        parseEnvironment({ TAVILY_API_KEY: "tvly-current", WEB_SEARCH_API_KEY: "legacy" }),
+      ),
+    ).toBe("tvly-current");
+    expect(getTavilyApiKey(parseEnvironment({ WEB_SEARCH_API_KEY: "legacy" }))).toBe("legacy");
   });
 });

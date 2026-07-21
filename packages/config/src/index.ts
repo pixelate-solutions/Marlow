@@ -39,7 +39,8 @@ const baseSchema = z.object({
   WORKER_API_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
   APPROVAL_SIGNING_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
   CRON_SECRET: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
-  WEB_SEARCH_PROVIDER: z.enum(["meta", "mock"]).default("meta"),
+  WEB_SEARCH_PROVIDER: z.enum(["meta", "tavily", "mock"]).default("meta"),
+  TAVILY_API_KEY: optionalString,
   WEB_SEARCH_API_KEY: optionalString,
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(3),
   AGENT_MAX_TOOL_CALLS: z.coerce.number().int().min(1).max(100).default(40),
@@ -72,6 +73,12 @@ export function getSupabaseSecretKey(
   return environment.SUPABASE_SECRET_KEY ?? environment.SUPABASE_SERVICE_ROLE_KEY;
 }
 
+export function getTavilyApiKey(
+  environment: Pick<AppEnvironment, "TAVILY_API_KEY" | "WEB_SEARCH_API_KEY">,
+): string | undefined {
+  return environment.TAVILY_API_KEY ?? environment.WEB_SEARCH_API_KEY;
+}
+
 function missingProductionVariables(environment: AppEnvironment, runtime: AppRuntime): string[] {
   const missing: string[] = [];
   if (!environment.NEXT_PUBLIC_SUPABASE_URL) missing.push("NEXT_PUBLIC_SUPABASE_URL");
@@ -80,15 +87,15 @@ function missingProductionVariables(environment: AppEnvironment, runtime: AppRun
   }
   if (!environment.MODEL_API_KEY) missing.push("MODEL_API_KEY");
   if (
-    (runtime === "web" || runtime === "all") &&
-    !environment.ENCRYPTION_KEY
-  )
-    missing.push("ENCRYPTION_KEY");
-  if (
     runtime === "worker" &&
-    !environment.ENCRYPTION_KEY &&
-    !environment.WORKER_API_SECRET
-  )
+    environment.WEB_SEARCH_PROVIDER === "tavily" &&
+    !getTavilyApiKey(environment)
+  ) {
+    missing.push("TAVILY_API_KEY (or WEB_SEARCH_API_KEY)");
+  }
+  if ((runtime === "web" || runtime === "all") && !environment.ENCRYPTION_KEY)
+    missing.push("ENCRYPTION_KEY");
+  if (runtime === "worker" && !environment.ENCRYPTION_KEY && !environment.WORKER_API_SECRET)
     missing.push("WORKER_API_SECRET (or ENCRYPTION_KEY)");
   if ((runtime === "web" || runtime === "all") && !getSupabasePublishableKey(environment)) {
     missing.push("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or legacy NEXT_PUBLIC_SUPABASE_ANON_KEY)");

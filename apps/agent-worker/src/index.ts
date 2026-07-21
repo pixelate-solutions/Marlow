@@ -12,7 +12,7 @@ import {
   MockApolloProvider,
   type ApolloProvider,
 } from "@marlow/apollo";
-import { getSupabaseSecretKey, parseEnvironment } from "@marlow/config";
+import { getSupabaseSecretKey, getTavilyApiKey, parseEnvironment } from "@marlow/config";
 import {
   SupabaseAgentRepository,
   claimAgentJobs,
@@ -20,7 +20,11 @@ import {
   type AgentJob,
   type EncryptedSecret,
 } from "@marlow/database";
-import { MetaSearchGroundingProvider, MockResearchProvider } from "@marlow/research";
+import {
+  MetaSearchGroundingProvider,
+  MockResearchProvider,
+  TavilyResearchProvider,
+} from "@marlow/research";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { log } from "./logger";
 import { processSendJob } from "./send";
@@ -37,6 +41,7 @@ const client = createClient(environment.NEXT_PUBLIC_SUPABASE_URL, supabaseSecret
   auth: { persistSession: false, autoRefreshToken: false },
 });
 const repository = new SupabaseAgentRepository(client);
+const tavilyApiKey = getTavilyApiKey(environment);
 const workerId = `worker-${randomUUID()}`;
 const systemPrompt = await readFile(
   new URL("../../../packages/agent/prompts/outbound-agent.md", import.meta.url),
@@ -198,13 +203,16 @@ async function processCampaignJob(job: AgentJob): Promise<void> {
         apiKey: environment.MODEL_API_KEY!,
         baseUrl: environment.META_MODEL_API_BASE_URL,
       });
-  const research = environment.MOCK_INTEGRATIONS
-    ? new MockResearchProvider()
-    : new MetaSearchGroundingProvider({
-        apiKey: environment.MODEL_API_KEY!,
-        baseUrl: environment.META_MODEL_API_BASE_URL,
-        modelId: environment.META_MODEL_ID,
-      });
+  const research =
+    environment.MOCK_INTEGRATIONS || environment.WEB_SEARCH_PROVIDER === "mock"
+      ? new MockResearchProvider()
+      : environment.WEB_SEARCH_PROVIDER === "tavily" || environment.TAVILY_API_KEY
+        ? new TavilyResearchProvider({ apiKey: tavilyApiKey! })
+        : new MetaSearchGroundingProvider({
+            apiKey: environment.MODEL_API_KEY!,
+            baseUrl: environment.META_MODEL_API_BASE_URL,
+            modelId: environment.META_MODEL_ID,
+          });
   try {
     const orchestrator = new CampaignOrchestrator({
       model,
