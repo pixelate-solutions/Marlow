@@ -28,6 +28,8 @@ describe("campaign retry button", () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith("/api/campaigns/campaign-1/start", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
       }),
     );
     expect(router.refresh).toHaveBeenCalledOnce();
@@ -46,5 +48,27 @@ describe("campaign retry button", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Connect Gmail first.");
     expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit Apollo lead credit budget when the campaign has none", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: { status: "QUEUED" } }), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    render(<CampaignRetryButton campaignId="campaign-1" apolloCreditBudget={0} />);
+
+    expect(screen.getByRole("spinbutton", { name: "Apollo lead credit budget" })).toHaveValue(25);
+    fireEvent.click(screen.getByRole("button", { name: "Set budget and retry" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith("/api/campaigns/campaign-1/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apolloCreditBudget: 25 }),
+      }),
+    );
   });
 });

@@ -23,7 +23,13 @@ import {
   getCampaignProgress,
   getCampaignWorkflowStage,
 } from "@/lib/campaign-progress";
-import { getCampaign, getCampaignDiscovery, getCampaignRunState, getDrafts } from "@/lib/queries";
+import {
+  getCampaign,
+  getCampaignApolloCreditBudget,
+  getCampaignDiscovery,
+  getCampaignRunState,
+  getDrafts,
+} from "@/lib/queries";
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -64,7 +70,11 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       </div>
     );
   }
-  const [allDrafts, runState] = await Promise.all([getDrafts(), getCampaignRunState(id)]);
+  const [allDrafts, runState, apolloCreditBudget] = await Promise.all([
+    getDrafts(),
+    getCampaignRunState(id),
+    getCampaignApolloCreditBudget(id),
+  ]);
   const drafts = allDrafts.filter((draft) => draft.campaignId === campaign.id);
   const workflowStage = getCampaignWorkflowStage(campaign.status, runState.events);
   const progress = getCampaignProgress(campaign.status, runState.events);
@@ -109,7 +119,9 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           </div>
           <div className="page-header__actions">
             <CampaignDeleteButton campaignId={id} campaignName={campaign.name} />
-            {campaign.status === "FAILED" ? <CampaignRetryButton campaignId={id} /> : null}
+            {campaign.status === "FAILED" ? (
+              <CampaignRetryButton campaignId={id} apolloCreditBudget={apolloCreditBudget} />
+            ) : null}
             <Link
               className="button button--primary button--md"
               href={campaign.followUpDraftId ? `/review/${campaign.followUpDraftId}` : "/review"}

@@ -1401,6 +1401,24 @@ select:focus-visible {
   color: var(--red);
   font-size: 10px;
 }
+.campaign-retry__budget {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+.campaign-retry__budget input {
+  width: 76px;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
 .campaign-retry .spin {
   animation: activity-spin 0.8s linear infinite;
 }

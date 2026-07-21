@@ -81,6 +81,20 @@ export async function getCampaign(id: string) {
   return campaigns.find((campaign) => campaign.id === id) ?? null;
 }
 
+export async function getCampaignApolloCreditBudget(id: string): Promise<number> {
+  if (isDemoMode()) return 100;
+  const auth = await getAuthContext();
+  if (!auth) return 0;
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("campaign_limits")
+    .select("apollo_credit_budget")
+    .eq("organization_id", auth.organizationId)
+    .eq("campaign_id", id)
+    .maybeSingle();
+  return Number(data?.apollo_credit_budget ?? 0);
+}
+
 export async function getCampaignRunState(id: string) {
   if (isDemoMode())
     return {
