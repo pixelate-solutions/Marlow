@@ -111,11 +111,9 @@ export const leadScoreComponentsSchema = z.object({
 
 export type LeadScoreComponents = z.infer<typeof leadScoreComponentsSchema>;
 
-const confidencePercentSchema = z
-  .number()
-  .min(0)
-  .max(100)
-  .transform((value) => Math.round(value > 0 && value < 1 ? value * 100 : value));
+export function normalizeConfidencePercent(value: number): number {
+  return Math.round(value > 0 && value < 1 ? value * 100 : value);
+}
 
 export const outreachDraftSchema = z.object({
   subject: nonEmpty.max(120),
@@ -124,7 +122,7 @@ export const outreachDraftSchema = z.object({
   selectedAngle: nonEmpty,
   qualificationSummary: nonEmpty,
   supportingClaimIds: z.array(z.string()),
-  confidence: confidencePercentSchema,
+  confidence: z.number().min(0).max(100),
   complianceWarnings: z.array(z.string()),
 });
 

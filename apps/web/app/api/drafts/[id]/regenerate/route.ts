@@ -5,7 +5,7 @@ import {
   MuseSparkProvider,
   validateEmailCompliance,
 } from "@marlow/agent";
-import { AppError, outreachDraftSchema } from "@marlow/shared";
+import { AppError, normalizeConfidencePercent, outreachDraftSchema } from "@marlow/shared";
 import { z } from "zod";
 import { apiError, apiOk } from "@/lib/api";
 import { isDemoMode, requireAuth } from "@/lib/auth";
@@ -145,7 +145,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         selected_angle: finalDraft.selectedAngle,
         qualification_summary: finalDraft.qualificationSummary,
         supporting_claim_ids: finalDraft.supportingClaimIds,
-        confidence: finalDraft.confidence,
+        confidence: normalizeConfidencePercent(finalDraft.confidence),
         compliance_warnings: finalDraft.complianceWarnings,
       })
       .eq("id", id);

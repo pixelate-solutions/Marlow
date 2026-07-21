@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { campaignProfileSchema, outreachDraftSchema, sendingSettingsSchema } from "./schemas";
+import {
+  campaignProfileSchema,
+  normalizeConfidencePercent,
+  outreachDraftSchema,
+  sendingSettingsSchema,
+} from "./schemas";
 
 describe("campaign profile schema", () => {
   const valid = {
@@ -92,6 +97,6 @@ describe("outreach draft schema", () => {
       complianceWarnings: [],
     });
 
-    expect(draft.confidence).toBe(70);
+    expect(normalizeConfidencePercent(draft.confidence)).toBe(70);
   });
 });

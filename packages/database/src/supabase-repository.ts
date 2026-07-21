@@ -1,4 +1,9 @@
-import { AppError, campaignProfileSchema, type CampaignStatus } from "@marlow/shared";
+import {
+  AppError,
+  campaignProfileSchema,
+  normalizeConfidencePercent,
+  type CampaignStatus,
+} from "@marlow/shared";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   AgentJob,
@@ -298,7 +303,7 @@ export class SupabaseAgentRepository implements AgentRepository {
           selected_angle: input.draft.selectedAngle,
           qualification_summary: input.draft.qualificationSummary,
           supporting_claim_ids: input.draft.supportingClaimIds,
-          confidence: input.draft.confidence,
+          confidence: normalizeConfidencePercent(input.draft.confidence),
           compliance_warnings: input.draft.complianceWarnings,
           status: "PENDING_USER_APPROVAL",
         })
