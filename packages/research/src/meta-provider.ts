@@ -5,6 +5,7 @@ import { fetchPublicPage } from "./public-fetch";
 import {
   ResearchError,
   type CompanyResearch,
+  type RetrievedPage,
   type SearchResult,
   type WebResearchProvider,
 } from "./types";
@@ -30,6 +31,29 @@ const researchOutputSchema = z.object({
 function extractJson(text: string): unknown {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1];
   return JSON.parse((fenced ?? text).trim()) as unknown;
+}
+
+export function officialWebsiteFallbackResearch(
+  companyName: string,
+  page: RetrievedPage,
+): CompanyResearch {
+  return {
+    summary: `Marlow retrieved the official website for ${companyName}. The page title is ${page.title}.`,
+    signals: [],
+    claims: [
+      {
+        claim: `${companyName} maintains an active official website titled ${page.title}.`,
+        sourceUrl: page.url,
+        sourceTitle: page.title,
+        retrievedAt: page.retrievedAt,
+        confidence: "medium",
+        sourceType: "official_company",
+      },
+    ],
+    uncertainty: [
+      "Broader web search was temporarily unavailable, so research is limited to the official website.",
+    ],
+  };
 }
 
 export class MetaSearchGroundingProvider implements WebResearchProvider {
@@ -85,9 +109,16 @@ export class MetaSearchGroundingProvider implements WebResearchProvider {
     prospectTitle: string;
     campaignContext: string;
   }): Promise<CompanyResearch> {
-    const payload = await this.groundedJson(
-      `Research ${input.companyName} (${input.websiteUrl}) for a potential outreach to a ${input.prospectTitle}. Campaign context: ${input.campaignContext}. Prioritize official pages, careers, official press releases, then reputable news. Every material claim must have a directly supporting source URL and retrieval timestamp. Return {"summary":"","signals":[],"claims":[{"claim":"","sourceUrl":"https://...","sourceTitle":"","retrievedAt":"ISO timestamp","confidence":"high|medium|low","sourceType":"official_company|apollo|official_press_release|job_posting|news|other"}],"uncertainty":[]}.`,
-    );
-    return researchOutputSchema.parse(payload);
+    try {
+      const payload = await this.groundedJson(
+        `Research ${input.companyName} (${input.websiteUrl}) for a potential outreach to a ${input.prospectTitle}. Campaign context: ${input.campaignContext}. Prioritize official pages, careers, official press releases, then reputable news. Every material claim must have a directly supporting source URL and retrieval timestamp. Return {"summary":"","signals":[],"claims":[{"claim":"","sourceUrl":"https://...","sourceTitle":"","retrievedAt":"ISO timestamp","confidence":"high|medium|low","sourceType":"official_company|apollo|official_press_release|job_posting|news|other"}],"uncertainty":[]}.`,
+      );
+      return researchOutputSchema.parse(payload);
+    } catch (error) {
+      if (!(error instanceof ResearchError ? error.retryable : error instanceof z.ZodError))
+        throw error;
+      const page = await fetchPublicPage(input.websiteUrl);
+      return officialWebsiteFallbackResearch(input.companyName, page);
+    }
   }
 }
