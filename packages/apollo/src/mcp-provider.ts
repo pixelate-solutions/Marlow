@@ -150,6 +150,24 @@ function optionalNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function stringList(value: unknown): string[] {
+  return list(value).flatMap((item) => {
+    if (typeof item === "string" && item) return [item];
+    const name = optionalString(record(item).name);
+    return name ? [name] : [];
+  });
+}
+
+function joinedLocation(row: Record<string, unknown>): string | undefined {
+  const direct = optionalString(row.location ?? row.formatted_address);
+  if (direct) return direct;
+  const parts = [row.city, row.state, row.country].flatMap((value) => {
+    const part = optionalString(value);
+    return part ? [part] : [];
+  });
+  return parts.length > 0 ? parts.join(", ") : undefined;
+}
+
 function pageFromCursor(cursor?: string): number {
   const parsed = Number.parseInt(cursor ?? "1", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
@@ -173,6 +191,19 @@ function cursorFromPayload(payload: Record<string, unknown>): string | undefined
     optionalString(payload.next_cursor ?? record(payload.pagination).next_cursor) ??
     nextPage(payload)
   );
+}
+
+function nextSearchPage(
+  payload: Record<string, unknown>,
+  currentPage: number,
+  pageSize: number,
+): string | undefined {
+  const cursor = cursorFromPayload(payload);
+  if (cursor) return cursor;
+  const totalEntries = optionalNumber(payload.total_entries);
+  return totalEntries !== undefined && currentPage * pageSize < totalEntries
+    ? String(currentPage + 1)
+    : undefined;
 }
 
 export function companySearchArguments(input: CompanySearchInput): Record<string, unknown> {
@@ -226,52 +257,59 @@ export function peopleSearchArguments(input: PeopleSearchInput): Record<string, 
   };
 }
 
-function mapCompany(value: unknown): ApolloCompany {
+export function mapCompanyPayload(value: unknown): ApolloCompany | undefined {
   const row = record(value);
   const id = optionalString(row.id ?? row.organization_id);
   const name = optionalString(row.name);
-  const domain = optionalString(row.domain ?? row.primary_domain);
-  if (!id || !name || !domain)
-    throw new ApolloError(
-      "APOLLO_INVALID_RESPONSE",
-      "Apollo company response omitted required fields.",
-      false,
-    );
+  const websiteUrl = optionalString(row.website_url);
+  let domain = optionalString(row.domain ?? row.primary_domain);
+  if (!domain && websiteUrl) {
+    try {
+      domain = new URL(websiteUrl).hostname.replace(/^www\./, "");
+    } catch {
+      domain = undefined;
+    }
+  }
+  if (!id || !name || !domain) return undefined;
+  const location = joinedLocation(row);
   return {
     id,
     name,
     domain,
-    ...(optionalString(row.website_url) ? { websiteUrl: String(row.website_url) } : {}),
+    ...(websiteUrl ? { websiteUrl } : {}),
     ...(optionalString(row.industry) ? { industry: String(row.industry) } : {}),
     ...(optionalNumber(row.estimated_num_employees ?? row.employee_count) !== undefined
       ? { employeeCount: Number(row.estimated_num_employees ?? row.employee_count) }
       : {}),
-    ...(optionalNumber(row.estimated_annual_revenue ?? row.revenue) !== undefined
-      ? { estimatedRevenue: Number(row.estimated_annual_revenue ?? row.revenue) }
+    ...(optionalNumber(row.estimated_annual_revenue ?? row.revenue ?? row.organization_revenue) !==
+    undefined
+      ? {
+          estimatedRevenue: Number(
+            row.estimated_annual_revenue ?? row.revenue ?? row.organization_revenue,
+          ),
+        }
       : {}),
-    ...(optionalString(row.location) ? { location: String(row.location) } : {}),
-    technologies: list(row.technologies).filter((item): item is string => typeof item === "string"),
-    keywords: list(row.keywords).filter((item): item is string => typeof item === "string"),
+    ...(location ? { location } : {}),
+    technologies: stringList(row.technologies ?? row.technology_names ?? row.current_technologies),
+    keywords: stringList(row.keywords ?? row.organization_keywords ?? row.secondary_industries),
   };
 }
 
-function mapPerson(value: unknown): ApolloPerson {
+export function mapPersonPayload(
+  value: unknown,
+  fallbackCompanyId?: string,
+): ApolloPerson | undefined {
   const row = record(value);
   const personId = optionalString(row.person_id ?? row.id);
   const companyId = optionalString(
-    row.organization_id ?? row.company_id ?? record(row.organization).id,
+    row.organization_id ?? row.company_id ?? record(row.organization).id ?? fallbackCompanyId,
   );
   const firstName = optionalString(row.first_name);
-  const lastName = optionalString(row.last_name);
+  const lastName = optionalString(row.last_name ?? row.last_name_obfuscated);
   const title = optionalString(row.title);
-  if (!personId || !companyId || !firstName || !lastName || !title) {
-    throw new ApolloError(
-      "APOLLO_INVALID_RESPONSE",
-      "Apollo person response omitted required fields.",
-      false,
-    );
-  }
+  if (!personId || !companyId || !firstName || !lastName || !title) return undefined;
   const emailStatus = optionalString(row.email_status);
+  const location = joinedLocation(row);
   return {
     personId,
     companyId,
@@ -284,7 +322,7 @@ function mapPerson(value: unknown): ApolloPerson {
       ? { emailStatus: emailStatus as NonNullable<ApolloPerson["emailStatus"]> }
       : {}),
     ...(optionalString(row.linkedin_url) ? { linkedinUrl: String(row.linkedin_url) } : {}),
-    ...(optionalString(row.location) ? { location: String(row.location) } : {}),
+    ...(location ? { location } : {}),
   };
 }
 
@@ -377,7 +415,12 @@ export class ApolloMcpProvider implements ApolloProvider {
 
   async searchCompanies(input: CompanySearchInput): Promise<ApolloPage<ApolloCompany>> {
     const payload = record(await this.call("searchCompanies", companySearchArguments(input)));
-    const items = list(payload.organizations ?? payload.companies ?? payload.items).map(mapCompany);
+    const items = list(payload.organizations ?? payload.companies ?? payload.items).flatMap(
+      (item) => {
+        const company = mapCompanyPayload(item);
+        return company ? [company] : [];
+      },
+    );
     const nextCursor = cursorFromPayload(payload);
     return {
       items,
@@ -393,8 +436,12 @@ export class ApolloMcpProvider implements ApolloProvider {
 
   async searchPeople(input: PeopleSearchInput): Promise<ApolloPage<ApolloPerson>> {
     const payload = record(await this.call("searchPeople", peopleSearchArguments(input)));
-    const items = list(payload.people ?? payload.contacts ?? payload.items).map(mapPerson);
-    const nextCursor = cursorFromPayload(payload);
+    const fallbackCompanyId = input.companyIds.length === 1 ? input.companyIds[0] : undefined;
+    const items = list(payload.people ?? payload.contacts ?? payload.items).flatMap((item) => {
+      const person = mapPersonPayload(item, fallbackCompanyId);
+      return person ? [person] : [];
+    });
+    const nextCursor = nextSearchPage(payload, pageFromCursor(input.cursor), input.pageSize);
     return {
       items,
       ...(nextCursor ? { nextCursor } : {}),
@@ -409,8 +456,15 @@ export class ApolloMcpProvider implements ApolloProvider {
 
   async enrichCompany(companyId: string): Promise<{ company: ApolloCompany; creditsUsed: number }> {
     const payload = record(await this.call("enrichCompany", { organization_id: companyId }));
+    const company = mapCompanyPayload(payload.organization ?? payload.company ?? payload);
+    if (!company)
+      throw new ApolloError(
+        "APOLLO_INVALID_RESPONSE",
+        "Apollo company response omitted required fields.",
+        false,
+      );
     return {
-      company: mapCompany(payload.organization ?? payload.company ?? payload),
+      company,
       creditsUsed: optionalNumber(payload.credits_used) ?? 0,
     };
   }
@@ -422,8 +476,15 @@ export class ApolloMcpProvider implements ApolloProvider {
         _rationale: "Complete the approved prospect record with a work email.",
       }),
     );
+    const person = mapPersonPayload(payload.person ?? payload);
+    if (!person)
+      throw new ApolloError(
+        "APOLLO_INVALID_RESPONSE",
+        "Apollo person response omitted required fields.",
+        false,
+      );
     return {
-      person: mapPerson(payload.person ?? payload),
+      person,
       creditsUsed: optionalNumber(payload.credits_used) ?? 0,
     };
   }

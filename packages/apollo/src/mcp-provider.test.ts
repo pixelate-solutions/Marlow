@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { companySearchArguments, parseToolPayload, peopleSearchArguments } from "./mcp-provider";
+import {
+  companySearchArguments,
+  mapCompanyPayload,
+  mapPersonPayload,
+  parseToolPayload,
+  peopleSearchArguments,
+} from "./mcp-provider";
 import { ApolloError } from "./types";
 
 describe("Apollo MCP argument mapping", () => {
@@ -64,5 +70,45 @@ describe("Apollo MCP argument mapping", () => {
       expect((error as ApolloError).code).toBe("APOLLO_PLAN_UPGRADE_REQUIRED");
       expect((error as ApolloError).retryable).toBe(false);
     }
+  });
+
+  it("skips incomplete companies and derives domains from valid websites", () => {
+    expect(mapCompanyPayload({ id: "company-1", name: "Incomplete" })).toBeUndefined();
+    expect(
+      mapCompanyPayload({
+        id: "company-2",
+        name: "Valid",
+        website_url: "https://www.valid.example/about",
+        organization_revenue: 5_000_000,
+        city: "Detroit",
+        state: "Michigan",
+        country: "United States",
+      }),
+    ).toMatchObject({
+      id: "company-2",
+      domain: "valid.example",
+      estimatedRevenue: 5_000_000,
+      location: "Detroit, Michigan, United States",
+    });
+  });
+
+  it("uses Apollo's obfuscated search surname and the requested company ID", () => {
+    expect(
+      mapPersonPayload(
+        {
+          id: "person-1",
+          first_name: "Morgan",
+          last_name_obfuscated: "R***",
+          title: "VP of Operations",
+        },
+        "company-1",
+      ),
+    ).toMatchObject({
+      personId: "person-1",
+      companyId: "company-1",
+      firstName: "Morgan",
+      lastName: "R***",
+      title: "VP of Operations",
+    });
   });
 });
