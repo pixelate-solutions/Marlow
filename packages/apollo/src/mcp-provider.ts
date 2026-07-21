@@ -247,7 +247,6 @@ export function companySearchArguments(input: CompanySearchInput): Record<string
 export function peopleSearchArguments(input: PeopleSearchInput): Record<string, unknown> {
   return {
     organization_ids: input.companyIds,
-    ...(input.jobFunctions.length > 0 ? { q_keywords: input.jobFunctions.join(" ") } : {}),
     ...(input.titles.length > 0 ? { person_titles: input.titles } : {}),
     include_similar_titles: true,
     ...(input.seniorities.length > 0

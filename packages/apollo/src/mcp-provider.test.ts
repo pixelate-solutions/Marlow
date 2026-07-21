@@ -45,7 +45,6 @@ describe("Apollo MCP argument mapping", () => {
       }),
     ).toMatchObject({
       organization_ids: ["company-1"],
-      q_keywords: "Operations",
       person_titles: ["VP of Operations"],
       include_similar_titles: true,
       person_seniorities: ["c_suite", "vp"],
@@ -53,6 +52,16 @@ describe("Apollo MCP argument mapping", () => {
       per_page: 25,
       page: 1,
     });
+    expect(
+      peopleSearchArguments({
+        companyIds: ["company-1"],
+        jobFunctions: ["Operations"],
+        titles: ["VP of Operations"],
+        seniorities: ["VP"],
+        locations: ["United States"],
+        pageSize: 25,
+      }),
+    ).not.toHaveProperty("q_keywords");
   });
 
   it("reports Apollo's paid-plan requirement as a non-retryable error", () => {

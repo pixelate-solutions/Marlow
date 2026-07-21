@@ -46,6 +46,10 @@ export function qualificationBatches<T>(items: T[], size = QUALIFICATION_BATCH_S
   return result;
 }
 
+export function campaignOutcomeStatus(draftsCreated: number): "PENDING_USER_APPROVAL" | "FAILED" {
+  return draftsCreated > 0 ? "PENDING_USER_APPROVAL" : "FAILED";
+}
+
 export class CampaignOrchestrator {
   constructor(
     private readonly dependencies: {
@@ -69,6 +73,7 @@ export class CampaignOrchestrator {
     let creditsRemaining = campaign.profile.limits.apolloCreditBudget;
     let draftsCreated = 0;
     let prospectsSkipped = 0;
+    let peopleFound = 0;
     const deadline = Date.now() + this.dependencies.maxRunMinutes * 60_000;
 
     const checkLimits = () => {
@@ -144,6 +149,10 @@ export class CampaignOrchestrator {
       ["QUALIFYING_ACCOUNTS"],
       "SEARCHING_PEOPLE",
     );
+    await event(
+      "AGENT_PROGRESS",
+      `Searching for contacts at ${qualifiedCompanies.length} qualified account${qualifiedCompanies.length === 1 ? "" : "s"}.`,
+    );
 
     for (const company of qualifiedCompanies) {
       if (draftsCreated >= campaign.profile.limits.requestedProspects) break;
@@ -167,6 +176,11 @@ export class CampaignOrchestrator {
           toolCalls += 1;
         },
         creditsRemaining,
+      );
+      peopleFound += people.length;
+      await event(
+        "AGENT_PROGRESS",
+        `Found ${people.length} potential contact${people.length === 1 ? "" : "s"} at ${company.name}.`,
       );
       const deterministicPeople = people.filter((person) =>
         this.personLooksQualified(campaign, person),
@@ -301,26 +315,30 @@ export class CampaignOrchestrator {
         });
         draftsCreated += 1;
         await event("DRAFT_READY", "Ready for approval.", { prospectId: saved.id });
+        break;
       }
     }
 
     await this.dependencies.repository.transitionCampaign(
       campaign.id,
       ["SEARCHING_PEOPLE", "RESEARCHING", "SCORING", "WRITING", "QUALITY_REVIEW"],
-      draftsCreated > 0 ? "PENDING_USER_APPROVAL" : "COMPLETED",
+      campaignOutcomeStatus(draftsCreated),
     );
     await event(
       "RUN_STATUS",
       draftsCreated > 0
         ? `${draftsCreated} review draft${draftsCreated === 1 ? " is" : "s are"} ready.`
-        : "Prospecting finished without a qualifying draft.",
+        : "No review drafts were created.",
       {
         progress:
           draftsCreated > 0
             ? "Open the review queue to inspect each draft."
-            : `${prospectsSkipped} prospect${prospectsSkipped === 1 ? " was" : "s were"} skipped.`,
+            : `${qualifiedCompanies.length} account${qualifiedCompanies.length === 1 ? " was" : "s were"} qualified, ${peopleFound} contact${peopleFound === 1 ? " was" : "s were"} found, and ${prospectsSkipped} contact${prospectsSkipped === 1 ? " was" : "s were"} skipped. Adjust targeting and retry.`,
         draftsCreated,
         prospectsSkipped,
+        accountsReviewed: companies.length,
+        accountsQualified: qualifiedCompanies.length,
+        peopleFound,
       },
     );
     return { draftsCreated, prospectsSkipped };
