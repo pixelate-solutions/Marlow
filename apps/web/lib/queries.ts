@@ -81,6 +81,57 @@ export async function getCampaign(id: string) {
   return campaigns.find((campaign) => campaign.id === id) ?? null;
 }
 
+export async function getCampaignRunState(id: string) {
+  if (isDemoMode())
+    return {
+      runStatus: "RUNNING",
+      errorMessage: null,
+      events: demoActivity.map((item, index) => ({
+        sequence: index + 1,
+        type: item.type.toUpperCase(),
+        message: item.text,
+        data: { detail: item.detail } as Record<string, unknown>,
+        createdAt: new Date(Date.now() - index * 60_000).toISOString(),
+      })),
+    };
+  const auth = await getAuthContext();
+  if (!auth) return { runStatus: null, errorMessage: null, events: [] };
+  const supabase = await createSupabaseServerClient();
+  const { data: run } = await supabase
+    .from("agent_runs")
+    .select("id,status,error_message")
+    .eq("organization_id", auth.organizationId)
+    .eq("campaign_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!run) return { runStatus: null, errorMessage: null, events: [] };
+  const { data: events } = await supabase
+    .from("agent_run_events")
+    .select("sequence,event_type,public_message,data,created_at")
+    .eq("organization_id", auth.organizationId)
+    .eq("campaign_id", id)
+    .eq("agent_run_id", run.id)
+    .order("sequence", { ascending: false })
+    .limit(12);
+  return {
+    runStatus: run.status as string,
+    errorMessage: run.error_message as string | null,
+    events: (events ?? [])
+      .map((event) => ({
+        sequence: Number(event.sequence),
+        type: event.event_type,
+        message: event.public_message,
+        data:
+          event.data && typeof event.data === "object"
+            ? (event.data as Record<string, unknown>)
+            : {},
+        createdAt: event.created_at,
+      }))
+      .reverse(),
+  };
+}
+
 export async function getCampaignDiscovery(id: string) {
   if (isDemoMode())
     return {

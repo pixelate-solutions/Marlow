@@ -36,6 +36,7 @@ const baseSchema = z.object({
   MICROSOFT_OAUTH_REDIRECT_URI: optionalUrl,
   MICROSOFT_OAUTH_TENANT: optionalString,
   ENCRYPTION_KEY: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
+  WORKER_API_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
   APPROVAL_SIGNING_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
   CRON_SECRET: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
   WEB_SEARCH_PROVIDER: z.enum(["meta", "mock"]).default("meta"),
@@ -78,7 +79,17 @@ function missingProductionVariables(environment: AppEnvironment, runtime: AppRun
     missing.push("SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY)");
   }
   if (!environment.MODEL_API_KEY) missing.push("MODEL_API_KEY");
-  if (!environment.ENCRYPTION_KEY) missing.push("ENCRYPTION_KEY");
+  if (
+    (runtime === "web" || runtime === "all") &&
+    !environment.ENCRYPTION_KEY
+  )
+    missing.push("ENCRYPTION_KEY");
+  if (
+    runtime === "worker" &&
+    !environment.ENCRYPTION_KEY &&
+    !environment.WORKER_API_SECRET
+  )
+    missing.push("WORKER_API_SECRET (or ENCRYPTION_KEY)");
   if ((runtime === "web" || runtime === "all") && !getSupabasePublishableKey(environment)) {
     missing.push("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or legacy NEXT_PUBLIC_SUPABASE_ANON_KEY)");
   }

@@ -1,11 +1,28 @@
-import { Check, Clock3, FileCheck2, Pause, SearchCheck, Send, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Clock3,
+  FileCheck2,
+  SearchCheck,
+  Send,
+  Sparkles,
+} from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, Card, Progress } from "@marlow/ui";
 import { CampaignChat } from "@/components/campaign-chat";
 import { CampaignDeleteButton } from "@/components/campaign-delete-button";
+import { CampaignLiveRefresh } from "@/components/campaign-live-refresh";
 import { PageHeader } from "@/components/page-header";
-import { getCampaign, getCampaignDiscovery, getDrafts } from "@/lib/queries";
+import {
+  campaignWorkflowSteps,
+  formatActivityTime,
+  getCampaignActivityLabel,
+  getCampaignActivityTone,
+  getCampaignProgress,
+  getCampaignWorkflowStage,
+} from "@/lib/campaign-progress";
+import { getCampaign, getCampaignDiscovery, getCampaignRunState, getDrafts } from "@/lib/queries";
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -46,10 +63,23 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       </div>
     );
   }
-  const drafts = (await getDrafts()).filter((draft) => draft.campaignId === campaign.id);
-  const steps = ["Search", "Qualify", "Enrich", "Research", "Write", "Review"];
+  const [allDrafts, runState] = await Promise.all([getDrafts(), getCampaignRunState(id)]);
+  const drafts = allDrafts.filter((draft) => draft.campaignId === campaign.id);
+  const workflowStage = getCampaignWorkflowStage(campaign.status, runState.events);
+  const progress = getCampaignProgress(campaign.status, runState.events);
+  const activityLabel = getCampaignActivityLabel(campaign.status, runState.runStatus);
+  const activityTone = getCampaignActivityTone(campaign.status, runState.runStatus);
+  const campaignActive = ![
+    "PAUSED",
+    "FAILED",
+    "PENDING_USER_APPROVAL",
+    "SENT",
+    "COMPLETED",
+  ].includes(campaign.status);
+  const visibleEvents = [...runState.events].reverse();
   return (
     <div className="page">
+      <CampaignLiveRefresh campaignId={id} active={campaignActive} />
       {campaign.followUpNeeded > 0 ? (
         <div className="status-banner status-banner--warning">
           <Clock3 size={14} />
@@ -60,7 +90,15 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       <Card className="campaign-hero">
         <div className="campaign-hero__top">
           <div>
-            <Badge tone={campaign.followUpNeeded > 0 ? "warning" : "success"}>
+            <Badge
+              tone={
+                campaign.followUpNeeded > 0 || campaign.status === "FAILED"
+                  ? "warning"
+                  : campaign.status === "PAUSED"
+                    ? "neutral"
+                    : "success"
+              }
+            >
               {campaign.followUpNeeded > 0
                 ? "FOLLOW-UP NEEDED"
                 : campaign.status.replaceAll("_", " ")}
@@ -70,10 +108,6 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           </div>
           <div className="page-header__actions">
             <CampaignDeleteButton campaignId={id} campaignName={campaign.name} />
-            <button className="button button--secondary button--md" type="button">
-              <Pause size={14} />
-              Pause
-            </button>
             <Link
               className="button button--primary button--md"
               href={campaign.followUpDraftId ? `/review/${campaign.followUpDraftId}` : "/review"}
@@ -84,17 +118,21 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           </div>
         </div>
         <div className="campaign-hero__progress">
-          <Progress value={campaign.progress} label="Campaign workflow progress" />
-          <span>{campaign.progress}% complete</span>
+          <Progress value={progress} label="Campaign workflow progress" />
+          <span>{progress}% complete</span>
         </div>
         <div className="workflow">
-          {steps.map((step, index) => (
+          {campaignWorkflowSteps.map((step, index) => (
             <div
-              className={`workflow-step ${index < 4 ? "workflow-step--done" : index === 4 ? "workflow-step--active" : ""}`}
+              className={`workflow-step ${workflowStage >= campaignWorkflowSteps.length || index < workflowStage ? "workflow-step--done" : index === workflowStage && campaign.status !== "FAILED" && campaign.status !== "PAUSED" ? "workflow-step--active" : ""}`}
               key={step}
             >
               <span className="workflow-step__node">
-                {index < 4 ? <Check size={13} /> : index + 1}
+                {workflowStage >= campaignWorkflowSteps.length || index < workflowStage ? (
+                  <Check size={13} />
+                ) : (
+                  index + 1
+                )}
               </span>
               <span>{step}</span>
             </div>
@@ -138,6 +176,15 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
                     </td>
                   </tr>
                 ))}
+                {drafts.length === 0 ? (
+                  <tr>
+                    <td className="prospect-table__empty" colSpan={4}>
+                      {campaign.status === "FAILED"
+                        ? "Prospecting stopped before a review draft was created."
+                        : "Qualified prospects will appear here as Marlow prepares review drafts."}
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
@@ -145,39 +192,61 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         <Card className="section-card">
           <div className="section-card__header">
             <h2>Live agent activity</h2>
-            <Badge tone="info">Working</Badge>
+            <Badge tone={activityTone}>{activityLabel}</Badge>
           </div>
           <div className="activity-list">
-            <div className="activity-item">
-              <span className="activity-icon activity-icon--research">
-                <SearchCheck size={14} />
-              </span>
-              <div className="activity-item__body">
-                <strong>Researching Brightline Logistics</strong>
-                <span>Checking official press releases</span>
+            {visibleEvents.map((event) => {
+              const message = event.message.toLowerCase();
+              const draftReady = event.type === "DRAFT_READY" || message.includes("approval");
+              const failed = event.type === "RUN_STATUS" && message.includes("failed");
+              const detail =
+                typeof event.data.detail === "string"
+                  ? event.data.detail
+                  : typeof event.data.progress === "string"
+                    ? event.data.progress
+                    : event.type.replaceAll("_", " ").toLowerCase();
+              return (
+                <div className="activity-item" key={event.sequence}>
+                  <span
+                    className={`activity-icon ${failed ? "activity-icon--skipped" : draftReady ? "activity-icon--sent" : message.includes("research") ? "activity-icon--research" : ""}`}
+                  >
+                    {failed ? (
+                      <AlertTriangle size={14} />
+                    ) : draftReady ? (
+                      <Send size={14} />
+                    ) : message.includes("research") ? (
+                      <SearchCheck size={14} />
+                    ) : (
+                      <Sparkles size={14} />
+                    )}
+                  </span>
+                  <div className="activity-item__body">
+                    <strong>{event.message}</strong>
+                    <span>{detail}</span>
+                  </div>
+                  <time>{formatActivityTime(event.createdAt)}</time>
+                </div>
+              );
+            })}
+            {visibleEvents.length === 0 ? (
+              <div className="activity-empty" role="status">
+                <Clock3 size={17} />
+                <div>
+                  <strong>
+                    {campaign.status === "QUEUED"
+                      ? "Waiting for a worker"
+                      : campaign.status === "FAILED"
+                        ? "Campaign needs attention"
+                        : "No activity recorded yet"}
+                  </strong>
+                  <span>
+                    {campaign.status === "QUEUED"
+                      ? "The campaign is safely queued. This panel updates when processing starts."
+                      : (runState.errorMessage ?? "New activity will appear here automatically.")}
+                  </span>
+                </div>
               </div>
-              <time>Now</time>
-            </div>
-            <div className="activity-item">
-              <span className="activity-icon">
-                <Sparkles size={14} />
-              </span>
-              <div className="activity-item__body">
-                <strong>Scored Maya Chen at 92</strong>
-                <span>Strong persona and signal match</span>
-              </div>
-              <time>4m</time>
-            </div>
-            <div className="activity-item">
-              <span className="activity-icon activity-icon--sent">
-                <Send size={14} />
-              </span>
-              <div className="activity-item__body">
-                <strong>Draft ready for review</strong>
-                <span>Acme Automation</span>
-              </div>
-              <time>8m</time>
-            </div>
+            ) : null}
           </div>
         </Card>
       </div>

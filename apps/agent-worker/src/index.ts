@@ -40,6 +40,29 @@ const systemPrompt = await readFile(
 
 async function loadApollo(organizationId: string): Promise<ApolloProvider> {
   if (environment.MOCK_INTEGRATIONS) return new MockApolloProvider();
+  if (environment.WORKER_API_SECRET) {
+    const response = await fetch(
+      new URL("/api/internal/worker/apollo-access", environment.NEXT_PUBLIC_APP_URL),
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${environment.WORKER_API_SECRET}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ organizationId }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    const payload = (await response.json()) as {
+      data?: { accessToken?: unknown };
+      error?: { code?: unknown };
+    };
+    if (!response.ok) throw new Error(String(payload.error?.code ?? "APOLLO_NOT_CONNECTED"));
+    const accessToken = payload.data?.accessToken;
+    if (typeof accessToken !== "string" || !accessToken)
+      throw new Error("APOLLO_REAUTHORIZATION_REQUIRED");
+    return new ApolloMcpProvider({ url: environment.APOLLO_MCP_URL, accessToken });
+  }
   if (!environment.ENCRYPTION_KEY) throw new Error("ENCRYPTION_KEY is required.");
   const { data, error } = await client
     .from("integrations")
@@ -58,9 +81,14 @@ async function loadApollo(organizationId: string): Promise<ApolloProvider> {
     authTag: String(raw.auth_tag),
     keyVersion: Number(raw.key_version),
   };
-  const tokens = JSON.parse(decryptSecret(secret, environment.ENCRYPTION_KEY)) as {
-    accessToken?: string;
-  };
+  let tokens: { accessToken?: string };
+  try {
+    tokens = JSON.parse(decryptSecret(secret, environment.ENCRYPTION_KEY)) as {
+      accessToken?: string;
+    };
+  } catch {
+    throw new Error("APOLLO_REAUTHORIZATION_REQUIRED");
+  }
   if (!tokens.accessToken) throw new Error("APOLLO_REAUTHORIZATION_REQUIRED");
   return new ApolloMcpProvider({
     url: environment.APOLLO_MCP_URL,
@@ -135,6 +163,29 @@ function createMockModel(): MockModelProvider {
 }
 
 async function processCampaignJob(job: AgentJob): Promise<void> {
+  const runId = job.runId ?? String(job.payload.runId ?? "");
+  if (!runId) throw new Error("CAMPAIGN_RUN job omitted runId.");
+  const startedAt = new Date().toISOString();
+  await client
+    .from("agent_runs")
+    .update({
+      status: "RUNNING",
+      started_at: startedAt,
+      completed_at: null,
+      heartbeat_at: startedAt,
+      error_code: null,
+      error_message: null,
+    })
+    .eq("id", runId);
+  await client.from("agent_run_events").insert({
+    agent_run_id: runId,
+    organization_id: job.organizationId,
+    campaign_id: job.campaignId,
+    event_type: "RUN_STATUS",
+    public_message: "A worker picked up the campaign.",
+    data: { progress: "Prospecting is starting." },
+  });
+
   const apollo = await loadApollo(job.organizationId);
   const model = environment.MOCK_INTEGRATIONS
     ? createMockModel()
@@ -149,8 +200,6 @@ async function processCampaignJob(job: AgentJob): Promise<void> {
         baseUrl: environment.META_MODEL_API_BASE_URL,
         modelId: environment.META_MODEL_ID,
       });
-  const runId = job.runId ?? String(job.payload.runId ?? "");
-  if (!runId) throw new Error("CAMPAIGN_RUN job omitted runId.");
   try {
     const orchestrator = new CampaignOrchestrator({
       model,
@@ -165,11 +214,73 @@ async function processCampaignJob(job: AgentJob): Promise<void> {
     await orchestrator.run({ campaignId: job.campaignId, runId });
     await client
       .from("agent_runs")
-      .update({ status: "SUCCEEDED", completed_at: new Date().toISOString() })
+      .update({
+        status: "SUCCEEDED",
+        completed_at: new Date().toISOString(),
+        heartbeat_at: new Date().toISOString(),
+      })
       .eq("id", runId);
   } finally {
     await apollo.disconnect();
   }
+}
+
+function publicCampaignError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("APOLLO_NOT_CONNECTED"))
+    return "Apollo is not connected. Reconnect Apollo before retrying this campaign.";
+  if (message.includes("APOLLO_REAUTHORIZATION_REQUIRED"))
+    return "Apollo authorization needs to be renewed. Reconnect Apollo before retrying.";
+  if (message.includes("APOLLO_PERMISSION_DENIED"))
+    return "Apollo did not grant a capability required by this campaign.";
+  if (/timeout|timed out/i.test(message))
+    return "A required service timed out. Marlow will retry automatically.";
+  return "Marlow could not complete this campaign attempt.";
+}
+
+async function recordCampaignFailure(
+  job: AgentJob,
+  error: unknown,
+  retryable: boolean,
+): Promise<void> {
+  if (job.type !== "CAMPAIGN_RUN") return;
+  const runId = job.runId ?? String(job.payload.runId ?? "");
+  if (!runId) return;
+  const now = new Date().toISOString();
+  const publicMessage = publicCampaignError(error);
+  const results = await Promise.all([
+    client
+      .from("agent_runs")
+      .update({
+        status: retryable ? "WAITING" : "FAILED",
+        heartbeat_at: now,
+        completed_at: retryable ? null : now,
+        error_code: retryable ? "RETRY_SCHEDULED" : "CAMPAIGN_RUN_FAILED",
+        error_message: publicMessage,
+      })
+      .eq("id", runId),
+    client
+      .from("campaigns")
+      .update({
+        status: retryable ? "QUEUED" : "FAILED",
+        status_changed_at: now,
+      })
+      .eq("id", job.campaignId)
+      .is("deleted_at", null),
+    client.from("agent_run_events").insert({
+      agent_run_id: runId,
+      organization_id: job.organizationId,
+      campaign_id: job.campaignId,
+      event_type: "RUN_STATUS",
+      public_message: retryable ? "This attempt failed. A retry is scheduled." : publicMessage,
+      data: {
+        progress: retryable ? publicMessage : "Reconnect the required service, then retry.",
+        retryScheduled: retryable,
+      },
+    }),
+  ]);
+  const failure = results.find((result) => result.error)?.error;
+  if (failure) throw new Error(failure.message);
 }
 
 async function markJob(
@@ -244,9 +355,18 @@ async function processJob(job: AgentJob): Promise<void> {
   } catch (error) {
     const retryable =
       job.attempts < 5 &&
-      !/APPROVAL_|SUPPRESSED|PERMISSION|CREDIT|DELIVERY_UNKNOWN/.test(
+      !/APPROVAL_|SUPPRESSED|PERMISSION|CREDIT|DELIVERY_UNKNOWN|APOLLO_NOT_CONNECTED|APOLLO_REAUTHORIZATION_REQUIRED|APOLLO_PERMISSION_DENIED|MAILBOX_NOT_AVAILABLE/.test(
         error instanceof Error ? error.message : String(error),
       );
+    try {
+      await recordCampaignFailure(job, error, retryable);
+    } catch (recordError) {
+      log("error", "Campaign failure state could not be recorded.", {
+        agentRunId: job.runId,
+        campaignId: job.campaignId,
+        error: recordError instanceof Error ? recordError.message : String(recordError),
+      });
+    }
     await markJob(job, retryable ? "RETRY" : "FAILED", error);
     log("error", "Durable job failed.", {
       agentRunId: job.runId,

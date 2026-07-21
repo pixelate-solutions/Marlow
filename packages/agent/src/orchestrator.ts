@@ -298,6 +298,20 @@ export class CampaignOrchestrator {
       ["SEARCHING_PEOPLE", "RESEARCHING", "SCORING", "WRITING", "QUALITY_REVIEW"],
       draftsCreated > 0 ? "PENDING_USER_APPROVAL" : "COMPLETED",
     );
+    await event(
+      "RUN_STATUS",
+      draftsCreated > 0
+        ? `${draftsCreated} review draft${draftsCreated === 1 ? " is" : "s are"} ready.`
+        : "Prospecting finished without a qualifying draft.",
+      {
+        progress:
+          draftsCreated > 0
+            ? "Open the review queue to inspect each draft."
+            : `${prospectsSkipped} prospect${prospectsSkipped === 1 ? " was" : "s were"} skipped.`,
+        draftsCreated,
+        prospectsSkipped,
+      },
+    );
     return { draftsCreated, prospectsSkipped };
   }
 

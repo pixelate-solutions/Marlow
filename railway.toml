@@ -1,0 +1,9 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @marlow/agent-worker... build"
+watchPatterns = ["apps/agent-worker/**", "packages/agent/**", "packages/apollo/**", "packages/research/**", "packages/database/**", "packages/shared/**", "packages/config/**", "pnpm-lock.yaml"]
+
+[deploy]
+startCommand = "pnpm --filter @marlow/agent-worker start"
+restartPolicyType = "ALWAYS"
+sleepApplication = false

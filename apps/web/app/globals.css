@@ -1194,6 +1194,31 @@ select:focus-visible {
   color: var(--faint);
   font-size: 9px;
 }
+.activity-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 18px 0;
+  color: var(--muted);
+}
+.activity-empty svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--blue);
+}
+.activity-empty strong,
+.activity-empty span {
+  display: block;
+}
+.activity-empty strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+.activity-empty span {
+  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.45;
+}
 .usage-card {
   margin-top: 18px;
   padding: 19px;
@@ -2029,6 +2054,12 @@ select:focus-visible {
   padding: 13px 17px;
   border-top: 1px solid var(--line);
   font-size: 11px;
+}
+.prospect-table td.prospect-table__empty {
+  padding: 28px 17px;
+  color: var(--muted);
+  line-height: 1.5;
+  text-align: center;
 }
 .prospect-cell {
   display: flex;

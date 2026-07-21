@@ -49,7 +49,7 @@ railway environment edit --service-config marlow-worker deploy.restartPolicyType
 railway environment edit --service-config marlow-worker build.watchPatterns '["apps/agent-worker/**","packages/agent/**","packages/apollo/**","packages/research/**","packages/database/**","packages/shared/**","packages/config/**","pnpm-lock.yaml"]'
 ```
 
-Set worker secrets with Railway variables. Use stdin for sensitive values rather than including them in shell history. The worker needs the Supabase secret key, project URL, model key, encryption key, Apollo MCP configuration, search configuration, concurrency and guardrail values. It does not need the browser publishable key. A direct database URL is needed for database CLI workflows, not for the current worker runtime.
+Set worker secrets with Railway variables. Use stdin for sensitive values rather than including them in shell history. The worker needs the Supabase secret key, project URL, model key, worker API secret, Apollo MCP configuration, search configuration, concurrency and guardrail values. Set the same `WORKER_API_SECRET` in Vercel and Railway so the worker can request an Apollo access token without copying the credential encryption key out of Vercel. The worker does not need the browser publishable key. A direct database URL is needed for database CLI workflows, not for the current worker runtime.
 
 Deploy from the repository root with an auditable release message:
 

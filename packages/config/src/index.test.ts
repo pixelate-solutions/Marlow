@@ -74,4 +74,19 @@ describe("runtime environment", () => {
       ),
     ).not.toThrow();
   });
+
+  it("allows the worker credential broker instead of the encryption key", () => {
+    expect(() =>
+      parseEnvironment(
+        {
+          NODE_ENV: "production",
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+          SUPABASE_SECRET_KEY: "sb_secret_test",
+          MODEL_API_KEY: "model-key",
+          WORKER_API_SECRET: "w".repeat(32),
+        },
+        { requireProductionSecrets: true, runtime: "worker" },
+      ),
+    ).not.toThrow();
+  });
 });
