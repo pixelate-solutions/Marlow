@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   explicitlyRequestsEmDashes,
   MuseSparkProvider,
+  restrictSupportingClaimIds,
   validateEmailCompliance,
 } from "@marlow/agent";
 import { AppError, normalizeConfidencePercent, outreachDraftSchema } from "@marlow/shared";
@@ -103,13 +104,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         },
       ],
     });
-    const finalDraft = reviewed.value.approved ? generated.value : reviewed.value.revisedDraft;
-    if (!finalDraft)
+    const reviewedDraft = reviewed.value.approved ? generated.value : reviewed.value.revisedDraft;
+    if (!reviewedDraft)
       throw new AppError(
         "VALIDATION_ERROR",
         "The regenerated email did not pass grounding review.",
         422,
       );
+    const allowedClaimIds = claims.flatMap((claim: unknown) => {
+      if (typeof claim !== "object" || claim === null) return [];
+      const claimId = (claim as { id?: unknown }).id;
+      return typeof claimId === "string" ? [claimId] : [];
+    });
+    const finalDraft = restrictSupportingClaimIds(reviewedDraft, allowedClaimIds);
     const compliance = validateEmailCompliance({
       subject: finalDraft.subject,
       body: finalDraft.body,

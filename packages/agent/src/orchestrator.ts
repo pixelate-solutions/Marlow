@@ -50,6 +50,17 @@ export function campaignOutcomeStatus(draftsCreated: number): "PENDING_USER_APPR
   return draftsCreated > 0 ? "PENDING_USER_APPROVAL" : "FAILED";
 }
 
+export function restrictSupportingClaimIds(
+  draft: OutreachDraft,
+  allowedClaimIds: readonly string[],
+): OutreachDraft {
+  const allowed = new Set(allowedClaimIds);
+  return {
+    ...draft,
+    supportingClaimIds: draft.supportingClaimIds.filter((id) => allowed.has(id)),
+  };
+}
+
 export class CampaignOrchestrator {
   constructor(
     private readonly dependencies: {
@@ -521,12 +532,7 @@ export class CampaignOrchestrator {
         },
       ],
     });
-    const candidate = {
-      ...draftResult.value,
-      supportingClaimIds: draftResult.value.supportingClaimIds.filter((id) =>
-        claimIds.includes(id),
-      ),
-    };
+    const candidate = restrictSupportingClaimIds(draftResult.value, claimIds);
     const deterministicReview = validateEmailCompliance({
       subject: candidate.subject,
       body: candidate.body,
@@ -547,12 +553,13 @@ export class CampaignOrchestrator {
     });
     if (review.value.approved) return candidate;
     if (!review.value.revisedDraft) return undefined;
+    const revisedDraft = restrictSupportingClaimIds(review.value.revisedDraft, claimIds);
     const revisedCompliance = validateEmailCompliance({
-      subject: review.value.revisedDraft.subject,
-      body: review.value.revisedDraft.body,
+      subject: revisedDraft.subject,
+      body: revisedDraft.body,
       profile: campaign.profile,
       allowEmDashes: explicitlyRequestsEmDashes(campaign.profile.messaging.customInstructions),
     });
-    return revisedCompliance.valid ? review.value.revisedDraft : undefined;
+    return revisedCompliance.valid ? revisedDraft : undefined;
   }
 }

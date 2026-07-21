@@ -302,7 +302,7 @@ export class SupabaseAgentRepository implements AgentRepository {
           personalization_summary: input.draft.personalizationSummary,
           selected_angle: input.draft.selectedAngle,
           qualification_summary: input.draft.qualificationSummary,
-          supporting_claim_ids: input.draft.supportingClaimIds,
+          supporting_claim_ids: input.draft.supportingClaimIds.filter(isUuid),
           confidence: normalizeConfidencePercent(input.draft.confidence),
           compliance_warnings: input.draft.complianceWarnings,
           status: "PENDING_USER_APPROVAL",
