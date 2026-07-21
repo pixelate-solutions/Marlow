@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
@@ -15,17 +16,37 @@ import type {
 import { ApolloError } from "./types";
 
 const toolAliases = {
-  listMailboxes: ["list_email_accounts", "email_accounts_list", "list_sending_accounts"],
-  searchCompanies: ["search_organizations", "organization_search", "search_companies"],
-  searchPeople: ["search_people", "people_search", "search_contacts"],
-  enrichCompany: ["enrich_organization", "organization_enrichment", "enrich_company"],
-  enrichPerson: ["enrich_person", "people_enrichment", "person_enrichment"],
-  findContact: ["search_contacts", "find_contact", "contact_search"],
-  createContact: ["create_contact", "contact_create"],
-  createList: ["create_list", "list_create"],
+  listMailboxes: [
+    "apollo_email_accounts_index",
+    "list_email_accounts",
+    "email_accounts_list",
+    "list_sending_accounts",
+  ],
+  searchCompanies: [
+    "apollo_mixed_companies_search",
+    "search_organizations",
+    "organization_search",
+    "search_companies",
+  ],
+  searchPeople: [
+    "apollo_mixed_people_api_search",
+    "search_people",
+    "people_search",
+    "search_contacts",
+  ],
+  enrichCompany: [
+    "apollo_organizations_enrich",
+    "enrich_organization",
+    "organization_enrichment",
+    "enrich_company",
+  ],
+  enrichPerson: ["apollo_people_match", "enrich_person", "people_enrichment", "person_enrichment"],
+  findContact: ["apollo_contacts_search", "search_contacts", "find_contact", "contact_search"],
+  createContact: ["apollo_contacts_create", "create_contact", "contact_create"],
+  createList: ["apollo_labels_create", "create_list", "list_create"],
   addContactToList: ["add_contact_to_list", "list_add_contact"],
   sendOneOffEmail: ["send_email", "send_one_off_email", "email_send"],
-  getUsage: ["get_usage", "usage", "credit_usage"],
+  getUsage: ["apollo_usage_stats_credit_usage_stats", "get_usage", "usage", "credit_usage"],
 } as const;
 
 type Operation = keyof typeof toolAliases;
@@ -40,7 +61,7 @@ function normalizeToolName(name: string): string {
   return name.toLowerCase().replace(/[.-]/g, "_");
 }
 
-function parseToolPayload(result: unknown): unknown {
+export function parseToolPayload(result: unknown): unknown {
   const parsed = contentSchema.safeParse(result);
   if (!parsed.success)
     throw new ApolloError(
@@ -52,18 +73,42 @@ function parseToolPayload(result: unknown): unknown {
     const text = parsed.data.content.map((item) => item.text ?? "").join(" ");
     throw classifyApolloError(text);
   }
-  if (parsed.data.structuredContent !== undefined) return parsed.data.structuredContent;
+  if (parsed.data.structuredContent !== undefined) {
+    const payload = record(parsed.data.structuredContent);
+    const errorCode = optionalString(payload.error_code);
+    const message =
+      optionalString(payload.error) ?? (errorCode ? optionalString(payload.message) : undefined);
+    if (message) throw classifyApolloError(message, errorCode);
+    return parsed.data.structuredContent;
+  }
   const text = parsed.data.content.find((item) => item.type === "text")?.text;
   if (!text) return {};
+  let payload: unknown;
   try {
-    return JSON.parse(text) as unknown;
+    payload = JSON.parse(text) as unknown;
   } catch {
     return { text };
   }
+  const data = record(payload);
+  const errorCode = optionalString(data.error_code);
+  const message =
+    optionalString(data.error) ?? (errorCode ? optionalString(data.message) : undefined);
+  if (message) throw classifyApolloError(message, errorCode);
+  return payload;
 }
 
-function classifyApolloError(message: string): ApolloError {
+function classifyApolloError(message: string, errorCode?: string): ApolloError {
   const lower = message.toLowerCase();
+  if (
+    errorCode === "API_INACCESSIBLE" ||
+    (/free plan|paid plan|upgrade/.test(lower) && /api|search/.test(lower))
+  ) {
+    return new ApolloError(
+      "APOLLO_PLAN_UPGRADE_REQUIRED",
+      "APOLLO_PLAN_UPGRADE_REQUIRED: Apollo search requires a paid plan.",
+      false,
+    );
+  }
   if (/oauth|unauthoriz|token|reauthor/.test(lower)) {
     return new ApolloError(
       "APOLLO_REAUTHORIZATION_REQUIRED",
@@ -105,6 +150,82 @@ function optionalNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function pageFromCursor(cursor?: string): number {
+  const parsed = Number.parseInt(cursor ?? "1", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function employeeRange(value: { min?: number | undefined; max?: number | undefined }): string {
+  return `${value.min ?? 1},${value.max ?? 1_000_000}`;
+}
+
+function nextPage(payload: Record<string, unknown>): string | undefined {
+  const pagination = record(payload.pagination);
+  const page = optionalNumber(pagination.page ?? payload.page);
+  const totalPages = optionalNumber(pagination.total_pages ?? payload.total_pages);
+  return page !== undefined && totalPages !== undefined && page < totalPages
+    ? String(page + 1)
+    : undefined;
+}
+
+function cursorFromPayload(payload: Record<string, unknown>): string | undefined {
+  return (
+    optionalString(payload.next_cursor ?? record(payload.pagination).next_cursor) ??
+    nextPage(payload)
+  );
+}
+
+export function companySearchArguments(input: CompanySearchInput): Record<string, unknown> {
+  const revenue = input.revenueRanges[0];
+  return {
+    ...([...input.industries, ...input.keywords].length > 0
+      ? { q_organization_keyword_tags: [...input.industries, ...input.keywords] }
+      : {}),
+    ...(input.locations.length > 0 ? { organization_locations: input.locations } : {}),
+    ...(input.employeeRanges.length > 0
+      ? { organization_num_employees_ranges: input.employeeRanges.map(employeeRange) }
+      : {}),
+    ...(input.technologies.length > 0
+      ? {
+          currently_using_any_of_technology_uids: input.technologies.map((technology) =>
+            technology.toLowerCase().replace(/[ .]+/g, "_"),
+          ),
+        }
+      : {}),
+    ...(revenue
+      ? {
+          revenue_range: {
+            ...(revenue.min !== undefined ? { min: revenue.min } : {}),
+            ...(revenue.max !== undefined ? { max: revenue.max } : {}),
+          },
+        }
+      : {}),
+    per_page: input.pageSize,
+    page: pageFromCursor(input.cursor),
+    _rationale: "Find companies matching the approved campaign criteria.",
+  };
+}
+
+export function peopleSearchArguments(input: PeopleSearchInput): Record<string, unknown> {
+  return {
+    organization_ids: input.companyIds,
+    ...(input.jobFunctions.length > 0 ? { q_keywords: input.jobFunctions.join(" ") } : {}),
+    ...(input.titles.length > 0 ? { person_titles: input.titles } : {}),
+    include_similar_titles: true,
+    ...(input.seniorities.length > 0
+      ? {
+          person_seniorities: input.seniorities.map((seniority) =>
+            seniority.toLowerCase().replace(/[ -]+/g, "_"),
+          ),
+        }
+      : {}),
+    ...(input.locations.length > 0 ? { person_locations: input.locations } : {}),
+    per_page: input.pageSize,
+    page: pageFromCursor(input.cursor),
+    _rationale: "Find people matching the approved campaign criteria.",
+  };
+}
+
 function mapCompany(value: unknown): ApolloCompany {
   const row = record(value);
   const id = optionalString(row.id ?? row.organization_id);
@@ -137,7 +258,9 @@ function mapCompany(value: unknown): ApolloCompany {
 function mapPerson(value: unknown): ApolloPerson {
   const row = record(value);
   const personId = optionalString(row.person_id ?? row.id);
-  const companyId = optionalString(row.organization_id ?? row.company_id);
+  const companyId = optionalString(
+    row.organization_id ?? row.company_id ?? record(row.organization).id,
+  );
   const firstName = optionalString(row.first_name);
   const lastName = optionalString(row.last_name);
   const title = optionalString(row.title);
@@ -168,6 +291,7 @@ function mapPerson(value: unknown): ApolloPerson {
 export class ApolloMcpProvider implements ApolloProvider {
   private client: Client | undefined;
   private toolNames: Map<Operation, string> | undefined;
+  private readonly conversationRef = randomBytes(8).toString("hex");
 
   constructor(
     private readonly options: {
@@ -217,7 +341,12 @@ export class ApolloMcpProvider implements ApolloProvider {
         false,
       );
     try {
-      return parseToolPayload(await client.callTool({ name: toolName, arguments: args }));
+      return parseToolPayload(
+        await client.callTool({
+          name: toolName,
+          arguments: { ...args, _conversation_ref: this.conversationRef },
+        }),
+      );
     } catch (error) {
       if (error instanceof ApolloError) throw error;
       throw classifyApolloError(error instanceof Error ? error.message : String(error));
@@ -247,13 +376,12 @@ export class ApolloMcpProvider implements ApolloProvider {
   }
 
   async searchCompanies(input: CompanySearchInput): Promise<ApolloPage<ApolloCompany>> {
-    const payload = record(await this.call("searchCompanies", input));
+    const payload = record(await this.call("searchCompanies", companySearchArguments(input)));
     const items = list(payload.organizations ?? payload.companies ?? payload.items).map(mapCompany);
+    const nextCursor = cursorFromPayload(payload);
     return {
       items,
-      ...(optionalString(payload.next_cursor ?? record(payload.pagination).next_cursor)
-        ? { nextCursor: String(payload.next_cursor ?? record(payload.pagination).next_cursor) }
-        : {}),
+      ...(nextCursor ? { nextCursor } : {}),
       ...(optionalNumber(payload.estimated_credits) !== undefined
         ? { estimatedCredits: Number(payload.estimated_credits) }
         : {}),
@@ -264,13 +392,12 @@ export class ApolloMcpProvider implements ApolloProvider {
   }
 
   async searchPeople(input: PeopleSearchInput): Promise<ApolloPage<ApolloPerson>> {
-    const payload = record(await this.call("searchPeople", input));
+    const payload = record(await this.call("searchPeople", peopleSearchArguments(input)));
     const items = list(payload.people ?? payload.contacts ?? payload.items).map(mapPerson);
+    const nextCursor = cursorFromPayload(payload);
     return {
       items,
-      ...(optionalString(payload.next_cursor ?? record(payload.pagination).next_cursor)
-        ? { nextCursor: String(payload.next_cursor ?? record(payload.pagination).next_cursor) }
-        : {}),
+      ...(nextCursor ? { nextCursor } : {}),
       ...(optionalNumber(payload.estimated_credits) !== undefined
         ? { estimatedCredits: Number(payload.estimated_credits) }
         : {}),
@@ -289,7 +416,12 @@ export class ApolloMcpProvider implements ApolloProvider {
   }
 
   async enrichPerson(personId: string): Promise<{ person: ApolloPerson; creditsUsed: number }> {
-    const payload = record(await this.call("enrichPerson", { person_id: personId }));
+    const payload = record(
+      await this.call("enrichPerson", {
+        id: personId,
+        _rationale: "Complete the approved prospect record with a work email.",
+      }),
+    );
     return {
       person: mapPerson(payload.person ?? payload),
       creditsUsed: optionalNumber(payload.credits_used) ?? 0,

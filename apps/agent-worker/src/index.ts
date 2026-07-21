@@ -6,7 +6,12 @@ import {
   MuseSparkProvider,
   createDefaultToolRegistry,
 } from "@marlow/agent";
-import { ApolloMcpProvider, MockApolloProvider, type ApolloProvider } from "@marlow/apollo";
+import {
+  ApolloError,
+  ApolloMcpProvider,
+  MockApolloProvider,
+  type ApolloProvider,
+} from "@marlow/apollo";
 import { getSupabaseSecretKey, parseEnvironment } from "@marlow/config";
 import {
   SupabaseAgentRepository,
@@ -226,6 +231,16 @@ async function processCampaignJob(job: AgentJob): Promise<void> {
 }
 
 function publicCampaignError(error: unknown): string {
+  if (error instanceof ApolloError) {
+    if (error.code === "APOLLO_PLAN_UPGRADE_REQUIRED")
+      return "Apollo plan upgrade required. Upgrade Apollo to a paid plan, then retry this campaign.";
+    if (error.code === "APOLLO_TOOL_UNAVAILABLE")
+      return "Apollo does not provide a search capability required by this campaign.";
+    if (error.code === "APOLLO_REAUTHORIZATION_REQUIRED")
+      return "Apollo authorization needs to be renewed. Reconnect Apollo before retrying.";
+    if (error.code === "APOLLO_PERMISSION_DENIED")
+      return "Apollo did not grant a capability required by this campaign.";
+  }
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("APOLLO_NOT_CONNECTED"))
     return "Apollo is not connected. Reconnect Apollo before retrying this campaign.";
@@ -233,6 +248,8 @@ function publicCampaignError(error: unknown): string {
     return "Apollo authorization needs to be renewed. Reconnect Apollo before retrying.";
   if (message.includes("APOLLO_PERMISSION_DENIED"))
     return "Apollo did not grant a capability required by this campaign.";
+  if (message.includes("APOLLO_PLAN_UPGRADE_REQUIRED"))
+    return "Apollo plan upgrade required. Upgrade Apollo to a paid plan, then retry this campaign.";
   if (/timeout|timed out/i.test(message))
     return "A required service timed out. Marlow will retry automatically.";
   return "Marlow could not complete this campaign attempt.";
@@ -274,7 +291,9 @@ async function recordCampaignFailure(
       event_type: "RUN_STATUS",
       public_message: retryable ? "This attempt failed. A retry is scheduled." : publicMessage,
       data: {
-        progress: retryable ? publicMessage : "Reconnect the required service, then retry.",
+        progress: retryable
+          ? publicMessage
+          : "Complete the required action, then select Retry campaign.",
         retryScheduled: retryable,
       },
     }),
@@ -355,9 +374,11 @@ async function processJob(job: AgentJob): Promise<void> {
   } catch (error) {
     const retryable =
       job.attempts < 5 &&
-      !/APPROVAL_|SUPPRESSED|PERMISSION|CREDIT|DELIVERY_UNKNOWN|APOLLO_NOT_CONNECTED|APOLLO_REAUTHORIZATION_REQUIRED|APOLLO_PERMISSION_DENIED|MAILBOX_NOT_AVAILABLE/.test(
-        error instanceof Error ? error.message : String(error),
-      );
+      (error instanceof ApolloError
+        ? error.retryable
+        : !/APPROVAL_|SUPPRESSED|PERMISSION|CREDIT|DELIVERY_UNKNOWN|APOLLO_NOT_CONNECTED|APOLLO_REAUTHORIZATION_REQUIRED|APOLLO_PERMISSION_DENIED|APOLLO_PLAN_UPGRADE_REQUIRED|MAILBOX_NOT_AVAILABLE/.test(
+            error instanceof Error ? error.message : String(error),
+          ));
     try {
       await recordCampaignFailure(job, error, retryable);
     } catch (recordError) {
