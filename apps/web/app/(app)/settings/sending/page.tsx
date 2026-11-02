@@ -25,7 +25,7 @@ export default async function SendingSettingsPage({
       : [
           {
             id: "demo-mailbox",
-            email: "alex@northstar.example",
+            email: "alex@fieldline.example",
             displayName: "Alex Morgan",
             provider: "GMAIL" as const,
             status: "AVAILABLE" as const,

@@ -6,8 +6,8 @@ const profile: CampaignProfile = {
   campaignObjective: "Book meetings",
   sender: {
     name: "Alex",
-    companyName: "Northstar",
-    companyWebsite: "https://northstar.example",
+    companyName: "Fieldline",
+    companyWebsite: "https://fieldline.example",
     signature: "Alex",
     postalAddress: "123 Main St",
   },

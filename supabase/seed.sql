@@ -1,6 +1,6 @@
 -- Safe deterministic demo records. No credentials and no send-capable integration are seeded.
 insert into public.organizations (id, name, slug, plan)
-values ('10000000-0000-4000-8000-000000000001', 'Northstar Demo', 'northstar-demo', 'demo')
+values ('10000000-0000-4000-8000-000000000001', 'Fieldline Demo', 'fieldline-demo', 'demo')
 on conflict do nothing;
 
 insert into public.campaigns (id, organization_id, name, objective, status, minimum_lead_score)

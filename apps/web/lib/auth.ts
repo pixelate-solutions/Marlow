@@ -23,7 +23,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
       userId: DEMO_IDS.user,
       organizationId: DEMO_IDS.organization,
       role: "owner",
-      email: "alex@northstar.example",
+      email: "alex@fieldline.example",
       demo: true,
     };
   }

@@ -66,7 +66,7 @@ export class MockApolloProvider implements ApolloProvider {
     return [
       {
         id: "demo-mailbox",
-        email: "alex@northstar.example",
+        email: "alex@fieldline.example",
         displayName: "Alex Morgan",
         status: "available",
         dailyLimit: 25,

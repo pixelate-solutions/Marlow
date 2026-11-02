@@ -11,8 +11,8 @@ describe("campaign profile schema", () => {
     campaignObjective: "Book qualified operations calls",
     sender: {
       name: "Alex Morgan",
-      companyName: "Northstar",
-      companyWebsite: "https://northstar.example",
+      companyName: "Fieldline",
+      companyWebsite: "https://fieldline.example",
       signature: "Alex",
       postalAddress: "123 Main St, Detroit, MI",
     },
@@ -47,7 +47,7 @@ describe("campaign profile schema", () => {
   };
 
   it("accepts a complete tenant campaign profile", () => {
-    expect(campaignProfileSchema.parse(valid).sender.companyName).toBe("Northstar");
+    expect(campaignProfileSchema.parse(valid).sender.companyName).toBe("Fieldline");
   });
 
   it("rejects campaigns without a target persona", () => {

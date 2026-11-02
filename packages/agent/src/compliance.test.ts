@@ -25,7 +25,7 @@ describe("email compliance", () => {
     const mark = String.fromCodePoint(0x2014);
     const input = {
       subject: "Scaling operations",
-      body: `Maya, Acme is expanding its operations team ${mark} a change that can make reporting harder across facilities. Northstar helps growing teams keep handoffs consistent without replacing current tools. Would comparing notes for 15 minutes next week be useful?`,
+      body: `Maya, Acme is expanding its operations team ${mark} a change that can make reporting harder across facilities. Fieldline helps growing teams keep handoffs consistent without replacing current tools. Would comparing notes for 15 minutes next week be useful?`,
     };
 
     const defaultResult = validateEmailCompliance(input);

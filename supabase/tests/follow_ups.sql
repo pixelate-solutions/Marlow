@@ -44,7 +44,7 @@ insert into public.email_sends(
   '92000000-0000-4000-8000-000000000001',
   'follow-up-test-mailbox', 'maya@acme.example', 'Scaling operations', 'Initial body',
   'follow-up-initial-send', 'SENT', timezone('utc', now()) - interval '8 days',
-  'GMAIL', 'alex@northstar.example', 'Alex Morgan'
+  'GMAIL', 'alex@fieldline.example', 'Alex Morgan'
 );
 
 select extensions.is(
@@ -98,7 +98,7 @@ insert into public.outreach_drafts(
   '20000000-0000-4000-8000-000000000001',
   '40000000-0000-4000-8000-000000000001',
   'maya@acme.example', 'follow-up-test-mailbox', 'GMAIL',
-  'alex@northstar.example', 'Alex Morgan', 'Re: Scaling operations',
+  'alex@fieldline.example', 'Alex Morgan', 'Re: Scaling operations',
   'Maya, following up with one useful question. Would a short conversation next week help?',
   'Follow-up test', 'Operations reporting', 'Qualified operations leader', 91,
   'PENDING_USER_APPROVAL', 'FOLLOW_UP', '93000000-0000-4000-8000-000000000001', 1
@@ -137,7 +137,7 @@ insert into public.email_sends(
   '92000000-0000-4000-8000-000000000002',
   'follow-up-test-mailbox', 'maya@acme.example', 'Re: Scaling operations', 'Follow-up body',
   'follow-up-approved-send', 'SENT', timezone('utc', now()),
-  'GMAIL', 'alex@northstar.example', 'Alex Morgan'
+  'GMAIL', 'alex@fieldline.example', 'Alex Morgan'
 );
 
 select extensions.is(
