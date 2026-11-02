@@ -1,92 +1,147 @@
 # Marlow
 
-Marlow is an AI-powered lead-generation and cold-outreach platform. A user describes a company, offer, and market in conversation; Muse Spark 1.1 builds a structured campaign profile, Apollo’s official remote MCP finds and enriches prospects, public research supplies cited evidence, and Marlow prepares concise emails for human review.
+**An AI outbound agent that does the prospecting work and leaves the sending decision to a human.**
 
-Collaborative mode is mandatory. The model cannot call the send tool. A direct **Approve and send** action creates a short-lived, exact-draft approval and the application rechecks tenancy, hashes, recipient, sender, signature, compliance footer, mailbox, suppression, campaign state, and limits before Gmail, Microsoft Graph, or a legacy Apollo mailbox is invoked.
+![Marlow review queue with an AI-drafted email, its evidence, and cited sources](docs/screenshots/01-review-queue.png)
 
-Direct Gmail and Microsoft sends are monitored for a reply after seven days. If no reply is detected, Marlow creates one follow-up draft, flags the campaign at the top with a colored border, and prioritizes the draft in the review queue. Nothing is sent automatically. Approval requires another live reply check and the same exact-send controls as the initial email.
+You describe your company, offer, and market in a chat. Marlow turns that into a structured ideal customer profile, finds matching companies and people through **Apollo's official remote MCP server**, researches each lead from public sources, and writes a short, cited email for each one. Every email lands in a review queue. **The model has no way to send email.** A message goes out only after a person approves that exact draft, and the server re-checks it before any mailbox is called.
+
+> Demo mode runs locally with no API keys: `pnpm install && pnpm demo` opens http://localhost:4107 with a fictional workspace. See [Demo mode](#demo-mode).
+
+## Features
+
+- **Discovery chat to campaign profile.** A conversational intake asks one question at a time, reads your website, and produces a Zod-validated `CampaignProfile` (offer, target accounts, personas, buying signals, disqualifiers, limits). A campaign can't start until the profile is complete.
+- **Lead search through Apollo MCP.** OAuth 2.1 + PKCE against `https://mcp.apollo.io/mcp`, typed tool adapters, paginated account and people search, deterministic qualification, deduplication, suppression checks, and a per-campaign Apollo credit budget.
+- **Grounded research.** Official pages, careers posts, and press releases via Tavily or search grounding, fetched through an SSRF-safe retriever. Every claim keeps a URL. Page text is wrapped as untrusted data so it can't instruct the agent.
+- **Review queue.** For each draft you see why the prospect was picked, the angle, the signals, cited sources, and what the research _couldn't_ confirm. You can edit, regenerate (shorter, more direct, different angle), skip, block a person or company, or report bad research.
+- **Exact-draft approval.** Approving creates a short-lived signed approval tied to hashes of the body, subject, recipient, and sender. Any edit invalidates it.
+- **Gmail and Microsoft 365 sending.** Sends go through the user's own mailbox, with their imported signature and a compliance footer. Quiet hours, allowed days, and daily limits are enforced.
+- **Reply-aware follow-ups.** Seven days after a send, Marlow checks for a reply. If there's none, it drafts one follow-up and flags it in the queue. It never sends the follow-up automatically.
+- **Live progress.** The worker streams progress events to the UI over SSE.
+
+![Approval dialog listing the exact message and the server-side checks that run before sending](docs/screenshots/02-approval-dialog.png)
 
 ## Architecture
 
-This is a pnpm/Turborepo TypeScript monorepo:
+```mermaid
+flowchart LR
+  user([User]) -->|chat| web[Next.js web app<br/>APIs + SSE + review UI]
+  web -->|enqueue job| pg[(Supabase Postgres<br/>RLS per workspace)]
+  worker[Agent worker<br/>durable job loop] -->|claim job| pg
+  worker -->|structured calls| model[LLM<br/>Zod-validated output]
+  worker -->|OAuth MCP tools| apollo[Apollo remote MCP]
+  worker -->|public pages| research[Research provider<br/>+ SSRF-safe fetch]
+  worker -->|drafts + citations| pg
+  pg -->|PENDING_USER_APPROVAL| web
+  user -->|Approve exact draft| gate{{Approval gate}}
+  gate -->|re-verify hashes, tenancy,<br/>suppression, limits, window| send[Gmail API /<br/>Microsoft Graph]
+```
+
+The browser only talks to authenticated application APIs. Long prospecting runs happen in `apps/agent-worker`, never inside a web request.
 
 ```text
 apps/
-  web/             Next.js control plane, authenticated APIs, SSE, review UI
-  agent-worker/    persistent PostgreSQL job worker
+  web/            Next.js control plane: authenticated APIs, SSE, review UI
+  agent-worker/   persistent Postgres job worker
 packages/
-  agent/           Muse Spark provider, discovery, workflow, policy, approval
-  apollo/          typed Apollo remote-MCP adapter and OAuth/PKCE
-  email/           Gmail and Microsoft OAuth, mailbox discovery, MIME, sending
-  research/        grounded search and SSRF-safe public retrieval
-  database/        Supabase repository, credential encryption, job claims
-  shared/          Zod contracts, statuses, errors, product constants
-  ui/              accessible UI primitives
-  config/          runtime environment validation
-supabase/
-  migrations/      normalized schema, RLS, RPCs, triggers, indexes
-  seed.sql         visibly labeled deterministic demo data
+  agent/          discovery, orchestration, tool policy, scoring, approval gate
+  apollo/         Apollo remote-MCP adapter, OAuth/PKCE, mock provider
+  email/          Gmail + Microsoft OAuth, MIME building, sending, reply checks
+  research/       Tavily/search grounding and SSRF-safe public retrieval
+  database/       Supabase repository, AES-256-GCM credential encryption, job claims
+  shared/         Zod contracts, statuses, errors, sending-window logic
+  ui/             UI primitives
+  config/         runtime environment validation
+supabase/         migrations (schema, RLS, RPCs), seed, SQL tests
 ```
 
-The browser talks only to authenticated application APIs. Long prospecting runs execute in `apps/agent-worker`; the web process enqueues PostgreSQL jobs and streams public progress events. See [architecture](docs/architecture.md) and [agent design](docs/agent-design.md).
+## How the AI and MCP pieces work, and the guardrails
 
-## Local development
+**The loop.** The worker runs `perceive -> decide -> authorize -> call -> validate -> persist -> reassess`. Every model response is parsed with Zod before it's used. Malformed output is retried or recovered, never trusted.
 
-Requirements: Node.js 20.9+, pnpm 10+, Docker, and Supabase CLI 2.x.
+**Tool policy.** Every tool, including each Apollo MCP tool, is registered in a `ToolPolicyRegistry` with `readOnly`, `creditConsuming`, `externalSideEffect`, `sendCapable`, and `requiresApproval` flags. The registry:
+
+- denies unknown tools
+- denies enrichment once the credit budget is spent
+- denies mutations on paused campaigns
+- denies **every** send-capable tool unless the caller is the `approval-gate` actor
+
+The model and the worker never hold that capability ([`packages/agent/src/policy.ts`](packages/agent/src/policy.ts)). Apollo's own send tool is registered as send-capable, so the agent can't reach it either.
+
+**Why the model can't send.** Sending is not a tool in the agent loop. It's a separate HTTP action (`POST /api/drafts/:id/approve-and-send`) that only a signed-in user can trigger, protected by CSRF checks and an idempotency key. The approval gate ([`packages/agent/src/approval.ts`](packages/agent/src/approval.ts)) recomputes the content hashes and re-checks all of the following before the mailbox is called:
+
+- tenancy and recipient
+- sender, signature, and compliance footer
+- mailbox connection
+- suppression list
+- campaign state
+- daily limits and the sending window
+
+A replayed request returns the original result instead of sending twice.
+
+**Evidence over flair.** Writing only sees verified claims. When evidence is missing, the score is low, or a separate quality review fails, the draft is skipped rather than given invented personalization.
+
+**Models.** Model calls go through the OpenAI SDK pointed at a configurable OpenAI-compatible endpoint. The current production configuration targets Meta's model API. Discovery, writing, and quality review all use structured outputs.
+
+## Demo mode
 
 ```bash
 pnpm install
-cp .env.example apps/web/.env.local
-supabase start
-supabase status
-pnpm --filter @marlow/web dev
+pnpm demo        # http://localhost:4107
 ```
 
-Copy the local API URL, anon key, service-role key, and database URL from `supabase status` into `apps/web/.env.local`. The local ports are `55431`–`55437` to avoid common collisions. Run the durable worker in a second terminal with the same values exported:
+Demo mode (`DEMO_MODE=true MOCK_INTEGRATIONS=true`) needs no keys or database. It serves a deterministic, fictional workspace for "Fieldline", an imaginary dispatch-software company:
+
+- an ideal customer profile for Midwest commercial HVAC operations leaders
+- 20 fictional leads across 4 campaigns (awaiting approval, sent, replied, researching, skipped)
+- 8 drafted emails with cited sources waiting in the approval queue
+- a completed discovery chat, plus a follow-up drafted after no reply
+
+Every name, company, and domain is invented. Domains use the reserved `.example` TLD. Apollo, the model, research, and email are replaced by labeled mock adapters, so demo sends are recorded locally and nothing leaves your machine. The production environment validator rejects `MOCK_INTEGRATIONS=true`, and demo mode is disabled when `NODE_ENV=production`.
+
+## Running against real services
+
+Requirements: Node.js 20.9+, pnpm 10+, Docker, Supabase CLI 2.x.
 
 ```bash
-set -a
-source apps/web/.env.local
-set +a
+pnpm install
+cp .env.example apps/web/.env.local   # fill in values from `supabase status`
+supabase start
+pnpm --filter @marlow/web dev
+# second terminal, same env exported:
 pnpm --filter @marlow/agent-worker dev
 ```
 
-For a deterministic UI walkthrough with no credentials or external side effects:
+Real campaigns need an Apollo OAuth client (MCP access), a model API key, Google and/or Microsoft OAuth clients, and a Supabase project. Setup details: [Apollo MCP](docs/apollo-mcp.md), [connected email](docs/email-providers.md), [deployment](docs/deployment.md), [security](docs/security.md), [compliance](docs/compliance.md).
+
+## Tests
 
 ```bash
-DEMO_MODE=true MOCK_INTEGRATIONS=true pnpm --filter @marlow/web dev
-```
-
-Demo data is labeled, uses `.example` domains, consumes no Apollo credits, and sends no external email. Mock adapters are explicit and the production environment validator rejects `MOCK_INTEGRATIONS=true`.
-
-## Production integrations
-
-- **Model:** set `MODEL_API_KEY`; production is locked to `https://api.meta.ai/v1` and `muse-spark-1.1`. Errors are retried only when transient. There is no fallback model.
-- **Apollo:** register the callback in `APOLLO_OAUTH_REDIRECT_URI`, then set the Apollo OAuth client values. The app discovers OAuth metadata, uses PKCE and signed state, encrypts tokens with AES-256-GCM, and connects only to `https://mcp.apollo.io/mcp`. `APOLLO_API_KEY` is a REST credential and cannot replace MCP OAuth.
-- **Gmail:** set the Google OAuth client values and callback. Marlow sends through the Gmail API from a verified send-as address, imports that address’s configured HTML signature, and uses read-only message search to detect replies.
-- **Microsoft 365 and Outlook:** set the Microsoft OAuth client values and callback. Marlow sends through Microsoft Graph from the signed-in account, saves the message in Sent Items, and uses `Mail.ReadBasic` metadata to detect replies. Microsoft Graph does not expose Outlook signatures, so each Microsoft mailbox has a signature field in Marlow.
-- **Supabase:** apply all migrations, verify RLS, configure Auth redirect URLs, use the current publishable/secret keys, and keep `SUPABASE_SECRET_KEY` server-only. Legacy anon/service-role environment names remain supported during migration.
-- **Research:** production uses Meta search grounding plus safe public-page retrieval. Retrieved content remains untrusted model data.
-
-External setup details are in [Apollo MCP](docs/apollo-mcp.md), [connected email](docs/email-providers.md), [deployment](docs/deployment.md), and [security](docs/security.md).
-
-## Validation
-
-```bash
-pnpm lint
+pnpm lint        # ESLint + copy-style check
 pnpm typecheck
-pnpm test
-pnpm test:e2e
+pnpm test        # Vitest across all packages
+pnpm test:e2e    # Playwright against demo mode (desktop + mobile)
 pnpm build
-supabase db reset
+supabase db reset && supabase test db   # RLS and follow-up SQL tests
 ```
 
-The browser suite covers desktop and mobile discovery, review, edit, approval, exact-once demo sending, CSP headers, and CSRF rejection. The unit and integration suites avoid exact wording assertions; they test schemas, facts, tool decisions, and prohibited behavior. See [testing](docs/testing.md).
+There are 36 Vitest files. They cover:
 
-## Deployment split
+- the tool policy (send denial, credit budgets)
+- approval hashing, signing, and replay
+- compliance and suppression
+- the campaign state machine and scoring
+- Apollo MCP response normalization and rate limits
+- SSRF-safe fetching
+- MIME building
+- the sending window and environment validation
 
-- Deploy `apps/web` as a Next.js application on Vercel.
-- Deploy `apps/agent-worker` as a continuously running service on Railway or another container host.
-- Use Supabase for Auth and PostgreSQL; do not run the worker inside a Vercel request.
+The Playwright suite walks the full path from discovery through review and the approval dialog to an exactly-once demo send, then checks the CSP headers and CSRF rejection. CI runs lint, typecheck, tests, and build on every push ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
-No live deploy is attempted by this repository. Credentials, an Apollo partner/OAuth client, a Meta Model API key, and hosted Supabase project are required before a staging campaign can make real calls.
+## Status
+
+What's real: the Apollo MCP integration, Gmail and Microsoft sending, reply detection, and the approval gate are implemented and unit-tested. They were built in July 2026, and the commit history shows them being adjusted against live Apollo MCP responses (rate limits, paid-search responses, current tool names). What isn't: there is no public hosted deployment, and the screenshots come from demo mode with fictional data. Deploy target: `apps/web` on Vercel, `apps/agent-worker` on Railway or any container host, Supabase for Auth and Postgres.
+
+## Stack
+
+TypeScript, pnpm + Turborepo, Next.js 16 / React 19, Supabase (Postgres, Auth, RLS), `@modelcontextprotocol/sdk`, OpenAI SDK, Zod, Vitest, Playwright, GitHub Actions.
