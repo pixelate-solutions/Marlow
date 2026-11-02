@@ -1,7 +1,12 @@
+import { campaignProfileSchema, type CampaignProfile } from "@marlow/shared";
 import {
+  DEMO_IDS,
   demoActivity,
+  demoCampaignProfile,
   demoCampaigns,
   demoDrafts,
+  demoProspects,
+  demoReadyDiscovery,
   demoSendingSettings,
   demoSuppressions,
 } from "./demo-data";
@@ -147,6 +152,7 @@ export async function getCampaignRunState(id: string) {
 }
 
 export async function getCampaignDiscovery(id: string) {
+  if (isDemoMode() && id === DEMO_IDS.readyCampaign) return demoReadyDiscovery;
   if (isDemoMode())
     return {
       messages: [
@@ -320,6 +326,57 @@ export async function getDrafts() {
     );
 }
 
+export type CampaignProspectRow = {
+  id: string;
+  name: string;
+  initials: string;
+  title: string;
+  company: string;
+  location: string;
+  score: number;
+  status: "DRAFTED" | "SENT" | "REPLIED" | "RESEARCHING" | "QUALIFIED" | "SKIPPED";
+  note: string;
+  draftId: string | null;
+};
+
+/**
+ * Prospects shown on the campaign page. Demo mode returns the full fictional lead
+ * list; live mode lists prospects that currently have a draft awaiting approval.
+ */
+export async function getCampaignProspects(id: string): Promise<CampaignProspectRow[]> {
+  if (isDemoMode()) return demoProspects.filter((prospect) => prospect.campaignId === id);
+  const drafts = (await getDrafts()).filter((draft) => draft.campaignId === id);
+  return drafts.map((draft) => ({
+    id: draft.prospectId,
+    name: draft.name,
+    initials: draft.initials,
+    title: draft.title,
+    company: draft.company,
+    location: draft.location,
+    score: draft.score,
+    status: "DRAFTED",
+    note: draft.draftKind === "FOLLOW_UP" ? "Follow-up awaiting approval" : "Awaiting approval",
+    draftId: draft.id,
+  }));
+}
+
+/** The current structured campaign profile (ICP), or null when none is saved. */
+export async function getCampaignProfile(id: string): Promise<CampaignProfile | null> {
+  if (isDemoMode()) return id === DEMO_IDS.campaign ? demoCampaignProfile : null;
+  const auth = await getAuthContext();
+  if (!auth) return null;
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("campaign_profiles")
+    .select("profile")
+    .eq("organization_id", auth.organizationId)
+    .eq("campaign_id", id)
+    .eq("is_current", true)
+    .maybeSingle();
+  const parsed = campaignProfileSchema.safeParse(data?.profile);
+  return parsed.success ? parsed.data : null;
+}
+
 export async function getDraft(id: string) {
   const drafts = await getDrafts();
   return drafts.find((draft) => draft.id === id) ?? null;
@@ -341,7 +398,7 @@ export async function getDashboard() {
         sent: campaigns.reduce((sum, item) => sum + item.sent, 0),
         skipped: 14,
         creditsUsed: 42,
-        dailyUsed: 18,
+        dailyUsed: 3,
         dailyLimit: 25,
       },
     };
@@ -481,7 +538,7 @@ export async function getSuppressions() {
 }
 
 export async function getWorkspaceSettings() {
-  if (isDemoMode()) return { name: "Northstar", slug: "northstar" };
+  if (isDemoMode()) return { name: "Fieldline", slug: "fieldline" };
   const auth = await getAuthContext();
   if (!auth) return { name: "", slug: "" };
   const supabase = await createSupabaseServerClient();

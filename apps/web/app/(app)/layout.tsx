@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { getAuthContext } from "@/lib/auth";
+import { demoDrafts } from "@/lib/demo-data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -12,13 +13,13 @@ export default async function ApplicationLayout({ children }: { children: React.
     return (
       <AppShell
         identity={{
-          workspaceName: "Northstar",
+          workspaceName: "Fieldline",
           workspaceLabel: "Demo workspace",
           userName: "Alex Morgan",
           userLabel: "Workspace owner",
           initials: "AM",
         }}
-        reviewCount={7}
+        reviewCount={demoDrafts.length}
       >
         {children}
       </AppShell>

@@ -17,6 +17,7 @@ import { CampaignRetryButton } from "@/components/campaign-retry-button";
 import { PageHeader } from "@/components/page-header";
 import {
   campaignWorkflowSteps,
+  formatCampaignStatus,
   formatActivityTime,
   getCampaignActivityLabel,
   getCampaignActivityTone,
@@ -27,9 +28,74 @@ import {
   getCampaign,
   getCampaignApolloCreditBudget,
   getCampaignDiscovery,
+  getCampaignProfile,
+  getCampaignProspects,
   getCampaignRunState,
-  getDrafts,
+  type CampaignProspectRow,
 } from "@/lib/queries";
+import type { CampaignProfile } from "@marlow/shared";
+
+const prospectStatus: Record<
+  CampaignProspectRow["status"],
+  { label: string; tone: "success" | "warning" | "info" | "neutral" | "violet" }
+> = {
+  DRAFTED: { label: "Awaiting approval", tone: "warning" },
+  SENT: { label: "Sent", tone: "success" },
+  REPLIED: { label: "Replied", tone: "violet" },
+  RESEARCHING: { label: "Researching", tone: "info" },
+  QUALIFIED: { label: "Qualified", tone: "info" },
+  SKIPPED: { label: "Skipped", tone: "neutral" },
+};
+
+function CampaignProfileCard({ profile }: { profile: CampaignProfile }) {
+  const { targetAccount, targetPersonas, offer } = profile;
+  const range = targetAccount.employeeRange;
+  const groups = [
+    {
+      label: "Target accounts",
+      items: [
+        ...targetAccount.industries,
+        ...(range?.min || range?.max
+          ? [`${range.min ?? 1} to ${range.max ?? "any"} employees`]
+          : []),
+      ],
+    },
+    { label: "Personas", items: targetPersonas.flatMap((persona) => persona.titles) },
+    { label: "Regions", items: targetAccount.locations },
+    { label: "Buying signals", items: targetAccount.buyingSignals },
+    { label: "Disqualifiers", items: profile.disqualifiers },
+  ];
+  return (
+    <Card className="section-card icp-card">
+      <div className="section-card__header">
+        <h2>Ideal customer profile</h2>
+        <span className="icp-card__meta">
+          Built from discovery chat · {profile.limits.apolloCreditBudget} Apollo credit budget ·{" "}
+          {profile.limits.dailySendLimit} sends per day
+        </span>
+      </div>
+      <div className="icp-card__offer">
+        <span>Offer</span>
+        <p>
+          <strong>{offer.productOrService}.</strong> {offer.primaryValue}. CTA: {offer.callToAction}
+          .
+        </p>
+      </div>
+      <div className="icp-card__grid">
+        {groups.map((group) => (
+          <div className="icp-card__group" key={group.label}>
+            <span>{group.label}</span>
+            <ul>
+              {group.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -70,12 +136,13 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       </div>
     );
   }
-  const [allDrafts, runState, apolloCreditBudget] = await Promise.all([
-    getDrafts(),
+  const [prospects, profile, runState, apolloCreditBudget] = await Promise.all([
+    getCampaignProspects(id),
+    getCampaignProfile(id),
     getCampaignRunState(id),
     getCampaignApolloCreditBudget(id),
   ]);
-  const drafts = allDrafts.filter((draft) => draft.campaignId === campaign.id);
+  const awaitingApproval = prospects.filter((prospect) => prospect.status === "DRAFTED").length;
   const workflowStage = getCampaignWorkflowStage(campaign.status, runState.events);
   const progress = getCampaignProgress(campaign.status, runState.events);
   const activityLabel = getCampaignActivityLabel(campaign.status, runState.runStatus);
@@ -111,8 +178,8 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               }
             >
               {campaign.followUpNeeded > 0
-                ? "FOLLOW-UP NEEDED"
-                : campaign.status.replaceAll("_", " ")}
+                ? "Follow-up needed"
+                : formatCampaignStatus(campaign.status)}
             </Badge>
             <h1>{campaign.name}</h1>
             <p>{campaign.objective}</p>
@@ -153,11 +220,16 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           ))}
         </div>
       </Card>
+      {profile ? <CampaignProfileCard profile={profile} /> : null}
       <div className="campaign-detail-grid">
         <Card className="section-card">
           <div className="section-card__header">
-            <h2>Qualified prospects</h2>
-            <Link href="/review">Open review queue</Link>
+            <h2>
+              Prospects <span className="section-card__count">{prospects.length}</span>
+            </h2>
+            <Link href="/review">
+              {awaitingApproval > 0 ? `${awaitingApproval} awaiting approval` : "Open review queue"}
+            </Link>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table className="prospect-table">
@@ -165,32 +237,55 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
                 <tr>
                   <th>Prospect</th>
                   <th>Company</th>
-                  <th>Score</th>
+                  <th>Fit</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {drafts.map((draft) => (
-                  <tr key={draft.id}>
-                    <td>
-                      <Link className="prospect-cell" href={`/review/${draft.id}`}>
-                        <span className="avatar avatar--teal">{draft.initials}</span>
-                        <span>
-                          <strong>{draft.name}</strong>
-                          <span>{draft.title}</span>
+                {prospects.map((prospect) => {
+                  const status = prospectStatus[prospect.status];
+                  const person = (
+                    <>
+                      <span className="avatar avatar--teal">{prospect.initials}</span>
+                      <span>
+                        <strong>{prospect.name}</strong>
+                        <span>{prospect.title}</span>
+                      </span>
+                    </>
+                  );
+                  return (
+                    <tr
+                      className={prospect.status === "SKIPPED" ? "prospect-row--muted" : undefined}
+                      key={prospect.id}
+                    >
+                      <td>
+                        {prospect.draftId ? (
+                          <Link className="prospect-cell" href={`/review/${prospect.draftId}`}>
+                            {person}
+                          </Link>
+                        ) : (
+                          <span className="prospect-cell">{person}</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className="prospect-company">
+                          <strong>{prospect.company}</strong>
+                          <span>{prospect.location}</span>
                         </span>
-                      </Link>
-                    </td>
-                    <td>{draft.company}</td>
-                    <td>
-                      <span className="score">{draft.score}</span>
-                    </td>
-                    <td>
-                      <Badge tone="success">Ready for review</Badge>
-                    </td>
-                  </tr>
-                ))}
-                {drafts.length === 0 ? (
+                      </td>
+                      <td>
+                        <span className="score">{prospect.score}</span>
+                      </td>
+                      <td>
+                        <span className="prospect-status">
+                          <Badge tone={status.tone}>{status.label}</Badge>
+                          <span>{prospect.note}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {prospects.length === 0 ? (
                   <tr>
                     <td className="prospect-table__empty" colSpan={4}>
                       {campaign.status === "FAILED"
