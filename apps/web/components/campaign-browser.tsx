@@ -1,5 +1,6 @@
 "use client";
 
+import { formatCampaignStatus } from "@/lib/campaign-progress";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -139,7 +140,7 @@ export function CampaignBrowser({ campaigns }: { campaigns: CampaignBrowserItem[
                       : "success"
                 }
               >
-                {campaign.status.replaceAll("_", " ")}
+                {formatCampaignStatus(campaign.status)}
               </Badge>
               <div className="campaign-card__stats">
                 <div className="campaign-card__stat">

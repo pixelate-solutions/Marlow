@@ -7,18 +7,20 @@ import {
   CheckCircle2,
   Clock3,
   ExternalLink,
+  Fingerprint,
   FileWarning,
   Link2,
   MessageSquareText,
   Save,
   Send,
+  ShieldCheck,
   Sparkles,
   UserRoundX,
   WandSparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Card } from "@marlow/ui";
 import type { demoDrafts } from "@/lib/demo-data";
 
@@ -29,6 +31,7 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
   const [subject, setSubject] = useState(draft.subject);
   const [body, setBody] = useState(draft.body);
   const [busy, setBusy] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const words = useMemo(() => body.trim().split(/\s+/).filter(Boolean).length, [body]);
   const dirty = subject !== draft.subject || body !== draft.body;
@@ -77,7 +80,17 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ instruction }),
     });
+  useEffect(() => {
+    if (!confirming) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setConfirming(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirming]);
+
   const approve = async () => {
+    setConfirming(false);
     if (dirty && !(await save())) return;
     const sent = await request("send", `/api/drafts/${draft.id}/approve-and-send`, {
       method: "POST",
@@ -85,8 +98,11 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
       body: JSON.stringify({ mailboxId: draft.mailboxId }),
     });
     if (sent) {
-      router.push("/review");
-      router.refresh();
+      // Leave the send confirmation visible briefly before moving to the next draft.
+      window.setTimeout(() => {
+        router.push("/review");
+        router.refresh();
+      }, 1800);
     }
   };
 
@@ -135,11 +151,12 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
           <header className="review-top">
             <div className="review-top__prospect">
               <span className="avatar avatar--teal">{draft.initials}</span>
-              <div>
+              <div className="review-top__identity">
                 <strong>{draft.name}</strong>
                 <span>
-                  {draft.title} · {draft.company} · {draft.location}
+                  {draft.title} · {draft.company}
                 </span>
+                <span className="review-top__location">{draft.location}</span>
               </div>
               <Badge tone="success">{draft.emailStatus}</Badge>
               <span className="score">{draft.score}</span>
@@ -154,7 +171,7 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
                 <Save size={13} />
                 Save changes
               </Button>
-              <Button size="sm" disabled={busy !== null} onClick={approve}>
+              <Button size="sm" disabled={busy !== null} onClick={() => setConfirming(true)}>
                 <Send size={13} />
                 {busy === "send"
                   ? "Sending…"
@@ -386,6 +403,71 @@ export function DraftReview({ draft, drafts }: { draft: Draft; drafts: Draft[] }
           </div>
         </Card>
       </div>
+      {confirming ? (
+        <div className="approval-overlay" onClick={() => setConfirming(false)}>
+          <div
+            className="approval-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="approval-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header>
+              <span className="approval-dialog__icon">
+                <ShieldCheck size={18} />
+              </span>
+              <div>
+                <h2 id="approval-title">
+                  {draft.draftKind === "FOLLOW_UP"
+                    ? "Approve this follow-up?"
+                    : "Approve this email?"}
+                </h2>
+                <p>You are approving this exact message. Any later edit requires a new approval.</p>
+              </div>
+            </header>
+            <dl className="approval-dialog__summary">
+              <div>
+                <dt>To</dt>
+                <dd>
+                  {draft.name} &lt;{draft.email}&gt;
+                </dd>
+              </div>
+              <div>
+                <dt>From</dt>
+                <dd>{draft.mailbox}</dd>
+              </div>
+              <div>
+                <dt>Subject</dt>
+                <dd>{subject}</dd>
+              </div>
+            </dl>
+            <div className="approval-dialog__checks">
+              <span>
+                <Fingerprint size={13} />
+                Rechecked on the server before the mailbox is called
+              </span>
+              <ul>
+                <li>Draft, recipient, and sender hashes match what you see</li>
+                <li>Recipient, domain, and company are not suppressed</li>
+                <li>Mailbox is connected and inside the sending window</li>
+                <li>Daily and campaign send limits have room</li>
+                {draft.draftKind === "FOLLOW_UP" ? (
+                  <li>No reply has arrived since the last check</li>
+                ) : null}
+              </ul>
+            </div>
+            <footer>
+              <Button variant="secondary" size="sm" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={approve} autoFocus>
+                <Send size={13} />
+                Confirm and send
+              </Button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

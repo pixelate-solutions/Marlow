@@ -30,7 +30,9 @@ test.describe("deterministic collaborative campaign", () => {
     await page.getByRole("link", { name: "Open deterministic demo" }).click();
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.getByRole("main").getByRole("heading").first()).toBeVisible();
-    await expect(page.getByText("Awaiting approval", { exact: true })).toBeVisible();
+    await expect(
+      page.locator(".metric-card__label", { hasText: "Awaiting approval" }),
+    ).toBeVisible();
     if ((page.viewportSize()?.width ?? 1_000) < 680) {
       await page.getByRole("button", { name: "Open navigation" }).click();
       const mobileDrawer = page.getByRole("dialog", { name: "Navigation" });
@@ -49,17 +51,17 @@ test.describe("deterministic collaborative campaign", () => {
       has: page.getByRole("heading", { name: "Gmail and Google Workspace" }),
     });
     await expect(gmailCard.getByText("Connected", { exact: true })).toBeVisible();
-    await expect(gmailCard.getByText("alex@northstar.example", { exact: true })).toBeVisible();
+    await expect(gmailCard.getByText("alex@fieldline.example", { exact: true })).toBeVisible();
     await expect(gmailCard.getByLabel("Email signature")).toHaveValue(
-      "Alex Morgan\nFounder, Northstar",
+      "Alex Morgan\nFounder, Fieldline",
     );
     const outlookCard = page.locator(".integration-card").filter({
       has: page.getByRole("heading", { name: "Microsoft 365 and Outlook" }),
     });
     await expect(outlookCard.getByText("Connected", { exact: true })).toBeVisible();
-    await expect(outlookCard.getByText("alex@northstar.example", { exact: true })).toBeVisible();
+    await expect(outlookCard.getByText("alex@fieldline.example", { exact: true })).toBeVisible();
     await expect(outlookCard.getByLabel("Email signature")).toHaveValue(
-      "Alex Morgan\nFounder, Northstar",
+      "Alex Morgan\nFounder, Fieldline",
     );
     await expect(page.getByText("muse-spark-1.1", { exact: true })).toBeVisible();
 
@@ -80,7 +82,7 @@ test.describe("deterministic collaborative campaign", () => {
     }
     await page
       .getByLabel("Answer Marlow")
-      .fill("Northstar sells workflow analytics to operations leaders at Midwest manufacturers.");
+      .fill("Fieldline sells workflow analytics to operations leaders at Midwest manufacturers.");
     await page.getByRole("button", { name: "Send answer" }).click();
     await expect(page.getByText(/which roles feel the pain/i)).toBeVisible();
     await expect(readinessIndicator).toHaveAttribute("aria-valuenow", "36");
@@ -111,6 +113,9 @@ test.describe("deterministic collaborative campaign", () => {
     const body = page.getByLabel("Email body");
     await body.fill(`${await body.inputValue()}\n\nTuesday mornings also work for me.`);
     await page.getByRole("button", { name: /Approve and send/ }).click();
+    const approvalDialog = page.getByRole("dialog", { name: /Approve this/ });
+    await expect(approvalDialog).toBeVisible();
+    await approvalDialog.getByRole("button", { name: "Confirm and send" }).click();
     await expect(page.getByText(/Demo send confirmed/i)).toBeVisible();
 
     const key = "e2e-stable-idempotency-key-0001";

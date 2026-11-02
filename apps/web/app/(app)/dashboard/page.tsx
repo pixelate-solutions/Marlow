@@ -1,3 +1,4 @@
+import { formatCampaignStatus } from "@/lib/campaign-progress";
 import { CheckCircle2, Clock3, FileCheck2, SearchCheck, Send, Target } from "lucide-react";
 import Link from "next/link";
 import { Badge, Card, Progress } from "@marlow/ui";
@@ -88,7 +89,7 @@ export default async function DashboardPage() {
                 <div className="campaign-progress__top">
                   <span>{campaign.progress}%</span>
                   <Badge tone={statusTone(campaign.status)}>
-                    {campaign.status.replaceAll("_", " ")}
+                    {formatCampaignStatus(campaign.status)}
                   </Badge>
                 </div>
                 <Progress value={campaign.progress} />

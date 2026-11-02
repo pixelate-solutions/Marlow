@@ -87,3 +87,19 @@ export function formatActivityTime(createdAt: string, now = Date.now()): string 
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
 }
+
+const campaignStatusLabels: Record<string, string> = {
+  PENDING_USER_APPROVAL: "Awaiting approval",
+  SEARCHING_ACCOUNTS: "Searching accounts",
+  QUALIFYING_ACCOUNTS: "Qualifying",
+  SEARCHING_PEOPLE: "Finding people",
+  QUALITY_REVIEW: "Quality review",
+};
+
+/** Human-readable campaign status for badges, e.g. PENDING_USER_APPROVAL -> "Awaiting approval". */
+export function formatCampaignStatus(status: string): string {
+  const label = campaignStatusLabels[status];
+  if (label) return label;
+  const words = status.toLowerCase().replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
