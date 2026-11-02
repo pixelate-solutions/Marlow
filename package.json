@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "turbo dev",
+    "demo": "DEMO_MODE=true MOCK_INTEGRATIONS=true NEXT_PUBLIC_APP_URL=http://localhost:4107 pnpm --filter @marlow/web exec next dev -p 4107",
     "build": "pnpm check:copy && turbo build",
     "lint": "pnpm check:copy && turbo lint",
     "typecheck": "turbo typecheck",
